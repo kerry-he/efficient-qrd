@@ -1,0 +1,6 @@
+[submodule "QETLAB"]
+	path = QETLAB
+	url = https://github.com/nathanieljohnston/QETLAB
+[submodule "CVX"]
+	path = CVX
+	url = https://github.com/cvxr/CVX
