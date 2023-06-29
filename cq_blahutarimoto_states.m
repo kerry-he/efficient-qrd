@@ -2,12 +2,15 @@ clear all; close all; clc;
 addpath(genpath('QETLAB-0.9'))
 addpath(genpath('quantinf'))
 
-rng(1)
+% rng(1)
 
-n = 25; % Number of codewords 
-N = 5; % Density matrix size
+n = 4; % Number of codewords 
+N = 2; % Density matrix size
 
 PHI = KrausOperators(RandomSuperoperator([N, N], 1, 0, 1));
+
+% PHI = KrausOperators(  DepolarizingChannel(N, 2/3) );
+PHI = KrausOperators( PauliChannel([1/7, 1/10, 1/4, 1-sum([1/7, 1/10, 1/4])]) );
 
 PHI_adj = PHI;
 for i = 1:length(PHI_adj)
@@ -19,6 +22,10 @@ end
 %% Setup algorithm
 
 % Initialise random states
+for i = 1:2
+    rand;
+end
+
 p = rand(n, 1); p = p / sum(p);
 rho = zeros(N, N, n);
 for i = 1:n
@@ -26,7 +33,7 @@ for i = 1:n
     rho(:, :, i) = rho(:, :, i) / trace(rho(:, :, i));
 end
 
-K = 1000;
+K = 100;
 
 % Alternative Nagaoka Blahut-Arimoto algorithm
 p_my = p;
@@ -152,41 +159,41 @@ for k = 1:K
 end
 
 
-% Alternative Nagaoka Blahut-Arimoto algorithm
-p_ba2 = p;
-rho_ba2 = rho;
-
-for k = 1:K
-    % Calculate ensemble density matrix
-    RHO = zeros(N, N);
-    for i = 1:n
-        RHO = RHO + p_ba2(i)*rho_ba2(:, :, i);
-    end
-
-    for i = 1:n
-        t_state = logm(ApplyMap(rho_ba2(:, :, i), PHI)) - logm(ApplyMap(RHO, PHI));
-        temp_state = ApplyMap(t_state, PHI_adj);
-        [U, D] = eig(temp_state);
-        [D, idx] = sort(diag(D));
-        U = U(:, idx);
-
-        rho_ba2(:, :, i) = U(:, 1)*U(:, 1)' + eye(N)*1e-15;
-
-        a = trace(rho_ba2(:, :, i) * t_state);
-        p_ba2(i) = p_ba2(i) * exp(a);
-    end
-    p_ba2 = p_ba2 / sum(p_ba2);
-
-
-    % Compute objective value
-    obj_ba2(k) = holevo_inf(p_ba2, rho_ba2, PHI);
-    fprintf("Iteration: %d \t Objective: %.5e\n", k, obj_ba2(k))
-end
+% % Alternative Nagaoka Blahut-Arimoto algorithm
+% p_ba2 = p;
+% rho_ba2 = rho;
+% 
+% for k = 1:K
+%     % Calculate ensemble density matrix
+%     RHO = zeros(N, N);
+%     for i = 1:n
+%         RHO = RHO + p_ba2(i)*rho_ba2(:, :, i);
+%     end
+% 
+%     for i = 1:n
+%         t_state = logm(ApplyMap(rho_ba2(:, :, i), PHI)) - logm(ApplyMap(RHO, PHI));
+%         temp_state = ApplyMap(t_state, PHI_adj);
+%         [U, D] = eig(temp_state);
+%         [D, idx] = sort(diag(D));
+%         U = U(:, idx);
+% 
+%         rho_ba2(:, :, i) = U(:, 1)*U(:, 1)' + eye(N)*1e-15;
+% 
+%         a = trace(rho_ba2(:, :, i) * t_state);
+%         p_ba2(i) = p_ba2(i) * exp(a);
+%     end
+%     p_ba2 = p_ba2 / sum(p_ba2);
+% 
+% 
+%     % Compute objective value
+%     obj_ba2(k) = holevo_inf(p_ba2, rho_ba2, PHI);
+%     fprintf("Iteration: %d \t Objective: %.5e\n", k, obj_ba2(k))
+% end
 
 semilogy(obj_my(end) - obj_my)
 hold on
 semilogy(obj_ba(end) - obj_ba)
-semilogy(obj_ba2(end) - obj_ba2)
+% semilogy(obj_ba2(end) - obj_ba2)
 
 
 %% Functions

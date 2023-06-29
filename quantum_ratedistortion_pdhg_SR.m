@@ -3,12 +3,14 @@ addpath(genpath('QETLAB-0.9'))
 addpath(genpath('quantinf'))
 addpath(genpath('cvxquad-master'))
 
-rng(2)
-N = 32; % Density matrix size
+rng(1)
+N = 2; % Density matrix size
 
 A = RandomDensityMatrix(N, 1);
 [~, A] = eig(A);
-AR_vec = purification(A); AR = AR_vec * AR_vec'; AR = sparse(AR);
+AR_vec = sparse(purification(A)); 
+AR = AR_vec * AR_vec'; 
+AR = sparse(AR);
 R = diagPartialTrace(AR, 1, N); R = sparse(1:N, 1:N, R);
 
 % Construct permutation matrix
@@ -41,56 +43,113 @@ end
 idx_sp = [i_sp, j_sp];
 
 %% Experiments
-K = 100;
-D = 0.0;
-lambda = 8.75;
+K = 10000;
+DIST = 0.5;
+lambda = 3;
+lambda_prev = lambda;
 
 % Change of variables
 RHO_QR = kron(A, R);
-V_CV = logm(R);
+V_CV = -logm(R);
+V_prev = V_CV;
 
 RHO_QR_D = eig(RHO_QR);
 RHO_QR_U = speye(N^2);
 S_A = von_neumann_entropy(A);
 
+RHO_Q = diagPartialTrace(RHO_QR, 2, N);
+obj(1) = S_A + shannon_entropy(RHO_Q); 
+obj(1) = obj(1) - shannon_entropy(RHO_QR_D);
+lgn(1) = obj(1) - lambda*(AR_vec' * RHO_QR * AR_vec);
+
+t_p = 1;
+t_d = 10;
+theta_0 = 1.0;
+
 tic
-k = 1;
+k = 2;
 while true
-    RHO_Q = diagPartialTrace(RHO_QR, 2, N);
-    obj_cv(k) = S_A + shannon_entropy(RHO_Q); 
-    obj_cv(k) = obj_cv(k) - shannon_entropy(RHO_QR_D);
-    lgn_cv(k) = obj_cv(k) - lambda*(AR_vec' * RHO_QR * AR_vec);
+    tic
+    RHO_QR_prev = RHO_QR;
+    RHO_QR_D_prev = RHO_QR_D;
+    RHO_QR_U_prev = RHO_QR_U;    
+    V_prev_prev = V_prev;
+    V_prev = V_CV;
+    lambda_prev_prev = lambda_prev;
+    lambda_prev = lambda;
 
-    % Perform Blahut-Arimoto iteration
-    [RHO_QR, RHO_QR_D, RHO_QR_U, V_CV] = trace_preserve_V(RHO_QR, V_CV, AR, lambda, P, idx_sp);
+    theta = 1.01;
+    t_p = t_p * theta;
+    t_d = t_d * theta;
 
-    % Compute upper bound
-    grad = kron((log(RHO_Q) - log(diagPartialTrace(RHO_QR, 2, N))), ones(N, 1));
-    grad = grad + kron(ones(N, 1), diag(V_CV));
-    lb(k) = S_A;
-    for i = 1:N
-        lb(k) = lb(k) + min(grad(i:N:end)) * R(i, i);
-    end    
+    while true
+
+        % Perform Blahut-Arimoto iteration
+        V_bar = V_prev + theta*(V_prev - V_prev_prev);
+        lambda_bar = lambda_prev + theta*(lambda_prev_prev - lambda_prev_prev);
+
+        LOG_RHO_QR = RHO_QR_U_prev * sparse(1:N^2, 1:N^2, log(RHO_QR_D_prev)) * RHO_QR_U_prev';
+        GRAD_RHO = LOG_RHO_QR - kron(sparse(1:N, 1:N, log(diagPartialTrace(RHO_QR_prev, 2, N))), eye(N));
+        STEP = -GRAD_RHO + lambda_bar*AR - kron(speye(N), V_bar);
+        
+        [U, D] = fast_eig(LOG_RHO_QR + STEP*t_p, P, idx_sp);
+
+        RHO_QR_D = exp(D);
+        RHO_QR_D = RHO_QR_D / sum(RHO_QR_D);
+        RHO_QR_U = U;
+        RHO_QR = RHO_QR_U * sparse(1:N^2, 1:N^2, RHO_QR_D) * RHO_QR_U';
+        
+        V_CV = V_prev + (diag(diagPartialTrace(RHO_QR, 1, N)) - R) * t_d;
+        lambda = lambda_prev + t_d * (1 - (AR_vec' * RHO_QR * AR_vec) - DIST)*0;
+
+        RHO_Q = diagPartialTrace(RHO_QR, 2, N);
+        obj(k) = S_A + shannon_entropy(RHO_Q); 
+        obj(k) = obj(k) - shannon_entropy(RHO_QR_D);
+
+        if obj(k) - obj(k - 1) - trace(GRAD_RHO * (RHO_QR - RHO_QR_prev)) ...
+            + (diag(V_CV) - diag(V_bar))' * diagPartialTrace(RHO_QR - RHO_QR_prev, 1, N) - (lambda-lambda_bar)*(AR_vec' * RHO_QR * AR_vec - (AR_vec' * RHO_QR_prev * AR_vec)) ...
+                <= abs(ffast_quantum_relative_entropy(RHO_QR_D, RHO_QR_U, RHO_QR_D_prev, RHO_QR_U_prev, P) - trace(RHO_QR) + trace(RHO_QR_prev)) / t_p...
+                + (norm(V_CV - V_bar, 'fro')^2 + (lambda-lambda_bar)^2) / (2*t_d)
+            break
+        end
+
+        theta = theta * 0.75;
+        t_p = t_p * 0.75;
+        t_d = t_d * 0.75;
+
+        display("BACKTRACKING")
+
+    end
+
 
     % Compute objective value
-    fprintf("Iteration: %d \t Objective: %.5e \t DualGap: %.5e\n", k, obj_cv(k), lgn_cv(k) - lb(k))
+    fprintf("Iteration: %d \t Objective: %.5e\n", k, obj(k))
 
     % Convert to bits
-    obj_cv(k) = log2(exp(obj_cv(k)));
-    lgn_cv(k) = log2(exp(lgn_cv(k)));
-    lb(k) = log2(exp(lb(k)));
+%     obj_cv(k) = log2(exp(obj_cv(k)));
+%     lgn_cv(k) = log2(exp(lgn_cv(k)));
+    lgn(k) = obj(k) - lambda*(AR_vec' * RHO_QR * AR_vec);
+    time(k) = toc;
 
-    if lgn_cv(k) - lb(k) < 1e-10
-        break
+%     d_res(k) = (norm(lambda - lambda_prev)^2 + norm(V_CV - V_prev, 'fro')^2) / (2*t_d*max([1, lambda, max(abs(V_CV), [], 'all')]));
+%     p_res(k) = (ffast_quantum_relative_entropy(RHO_QR_D, RHO_QR_U, RHO_QR_D_prev, RHO_QR_U_prev, P) - trace(RHO_QR) + trace(RHO_QR_prev)) / (t_p);
+% 
+%     if p_res(k) + d_res(k) <= 1e-10 && k > 10
+%         break
+%     end    
+
+    if k > 2
+        if abs(lgn(k) - lgn(k-1)) < 1e-8
+            break
+        end
     end
 
     k = k + 1;
 end
-toc
 
-semilogy(obj_cv - obj_cv(end))
-hold on
-semilogy(lgn_cv - lb)
+fprintf("Elapsed time is %.6f seconds.\n", sum(time))
+
+semilogy(cumsum(time(1:end)), abs(obj - obj(end)))
 
 %% Functions
 
@@ -98,10 +157,65 @@ function S = von_neumann_entropy(rho)
     S = -trace(rho * logm(rho + eye(length(rho))*1e-10));
 end
 
+function S = quantum_relative_entropy(rho, sigma)
+    S = trace(rho * (logm(rho) - logm(sigma)));
+end
+
+function S = fast_quantum_relative_entropy(rho_D, rho_U, sigma_D, sigma_U)
+    N = length(rho_D);
+    log_rho = rho_U * sparse(1:N, 1:N, log(rho_D)) * rho_U';
+    log_sigma = sigma_U * sparse(1:N, 1:N, log(sigma_D)) * sigma_U';
+
+    S = trace(rho_U * sparse(1:N, 1:N, log(rho_D)) * rho_U * (log_rho - log_sigma));
+end
+
+function S = ffast_quantum_relative_entropy(rho_D, rho_U, sigma_D, sigma_U, P)
+    N = sqrt(length(rho_D));
+%     rho_D = P * rho_D;
+    rho_U = P * rho_U;
+%     sigma_D = P * sigma_D;
+    sigma_U = P * sigma_U;    
+
+    S = relative_entropy(rho_D(1:(N^2-N)), sigma_D(1:(N^2-N)));
+
+    rho_D = rho_D(N^2-N+1:end);
+    sigma_D = sigma_D(N^2-N+1:end);
+
+    rho_U = rho_U(N^2-N+1:end, N^2-N+1:end);
+    sigma_U = sigma_U(N^2-N+1:end, N^2-N+1:end);
+
+    rho_sigma_U = rho_U' * sigma_U;
+
+    S = S - shannon_entropy(rho_D);
+    S = S - trace(sparse(1:N, 1:N, rho_D) * rho_sigma_U * sparse(1:N, 1:N, log(sigma_D)) * rho_sigma_U');
+end
+
 function H = shannon_entropy(p)
     p = p(p > 0);
     H = -p .* log(p);
     H = sum(H);
+end
+
+function H = relative_entropy(p, q)
+    H = sum(p .* log(p ./ q));
+end
+
+function [U, D] = fast_eig(X, P, idx_sp)
+    N = sqrt(length(X));
+    X = P*X*P';
+
+    [U_sub, D_sub] = eig(full(X((N^2-N+1):end, (N^2-N+1):end)));
+
+    D = zeros(N^2, 1);
+    D(1:(N^2-N)) = diag(X(1:(N^2-N), 1:(N^2-N)));
+    D((N^2-N+1):end) = diag(D_sub);
+    
+    v_sp = zeros(N^2-N + N^2, 1);
+    v_sp(1:N^2-N) = 1;
+    v_sp(N^2-N+1:end) = U_sub(:);
+    U = sparse(idx_sp(:, 1), idx_sp(:, 2), v_sp);
+
+    U = P'*U;
 end
 
 function [RHO_QR, rho_D, rho_U, V] = trace_preserve_V(RHO_QR, V, AR, lambda, P, idx_sp)
@@ -134,11 +248,17 @@ function [RHO_QR, rho_D, rho_U, V] = trace_preserve_V(RHO_QR, V, AR, lambda, P, 
     F = diagPartialTrace(RHO_QR, 1, N) - R;
 %     F = diag(F);
 
-    while norm(F) > 1e-15
+    while true
         J = get_jacobian(D, U, idx_sp);
 
         % Compute Newton step
         p = J \ F;
+
+        newton_dec = F' * p / 2;
+        if newton_dec < 1e-25
+            fprintf("\t Error: %.5e \t %.5e\n", norm(F), newton_dec)
+            break
+        end
     
         % Update with Newton step
         V = V - diag(p);
@@ -167,7 +287,7 @@ function [RHO_QR, rho_D, rho_U, V] = trace_preserve_V(RHO_QR, V, AR, lambda, P, 
         F_new = diagPartialTrace(RHO_QR, 1, N) - R;
 %         F_new = diag(F_new);
         
-        fprintf("\t Error: %.5e\n", norm(F_new))
+        fprintf("\t Error: %.5e \t %.5e\n", norm(F_new), newton_dec)
 
         F = F_new;
     end

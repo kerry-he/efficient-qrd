@@ -24,7 +24,7 @@ end
 display("DONE")
 
 %% Setup algorithm
-K = 100;
+K = 8;
 L = 2;
 
 obj_heur = zeros(K, 1);
@@ -41,6 +41,7 @@ ub_acc = ones(K, 1)*Inf;
 L_heur = L;
 rho_heur = rho;
 [obj_heur(1), grad] = q_mutual_inf(rho_heur, PHI, PHI_adj, PHI_C, PHI_C_adj);
+tic
 for k = 2:K
     rho_prev = rho_heur;
     
@@ -63,9 +64,10 @@ for k = 2:K
     
     ub_heur(k) = real(max(eig(grad)));
 end
+toc
 
 % Line search
-L_ls = 0.2;
+L_ls = L;
 rho_ls = rho;
 % for k = 1:K
 %     [obj_0, grad] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj);
@@ -101,6 +103,7 @@ rho_ls = rho;
 %     ub_ls(k) = real(max(eig(grad)));
 % end
 [obj_ls(1), grad] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj);
+tic
 for k = 2:K
     rho_prev = rho_ls;
     
@@ -111,7 +114,7 @@ for k = 2:K
         rho_ls = expm(logm(rho_prev) + grad / L_ls);
         rho_ls = rho_ls / trace(rho_ls);   
 
-        [obj_ls(k), ~] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj);
+        [obj_ls(k), ~] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj, "func");
         if k == 1
             obj_prev = obj_0;
         else
@@ -128,7 +131,7 @@ for k = 2:K
     
     % Compute gradiate and function value
     grad_prev = grad;
-    [obj_ls(k), grad] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj);
+    [~, grad] = q_mutual_inf(rho_ls, PHI, PHI_adj, PHI_C, PHI_C_adj, "grad");
 
     % Adaptive step size heuristic
     L_ls = trace(rho_ls * (grad_prev - grad)) / quantum_relative_entropy(rho_ls, rho_prev);
@@ -141,60 +144,61 @@ for k = 2:K
     
     ub_ls(k) = real(max(eig(grad)));
 end
+toc
 
-% Accelerated method search
-L_acc = 0.2;
-rho_acc = rho;
-theta = 1;
-x = rho;
-z = rho;
-for k = 1:K
-    y = (1 - theta) * x + theta * z;
-    [obj_0, grad] = q_mutual_inf(y, PHI, PHI_adj, PHI_C, PHI_C_adj);
-
-    % Perform Blahut-Arimoto iteration
-    x_prev = x;
-    z_prev = z;
-    for t = 0:10000
-        z = expm(logm(z_prev) + grad / L_acc);
-        z = z / trace(z);
-        x = (1 - theta) * x_prev + theta * z;
-        
-        [obj_acc(k), ~] = q_mutual_inf(x, PHI, PHI_adj, PHI_C, PHI_C_adj);
-        if k == 1
-            obj_prev = obj_0;
-        else
-            obj_prev = obj_acc(k - 1);
-        end
-        if real(-obj_acc(k)) <= real(-obj_prev - trace(grad * (x - x_prev)) + L_acc*quantum_relative_entropy(x, x_prev))
-            break
-        end
-        L_acc = L_acc * 1.1;
-        if L_acc > 2
-            L_acc = 2.0;
-            break
-        end        
-    end    
-    
-    a = 1 / (theta^2);
-    b = 1;
-    c = -1;
-    theta = (-b + sqrt(b^2 - 4*a*c)) / (2*a);
-    
-    obj_acc_z(k) = q_mutual_inf(z, PHI, PHI_adj, PHI_C, PHI_C_adj);
-    
-    if k >= 3
-    if obj_acc(k) < obj_acc(k-1)
-        theta = 1;
-        z = x;
-    end
-    end    
-
-    % Compute objective value
-    fprintf("Iteration: %d \t Objective: %.5e \t L: %.4f \t theta: %.4f\n", k, obj_acc(k), L_acc, theta)
-    
-    ub_acc(k) = real(max(eig(grad)));
-end
+% % Accelerated method search
+% L_acc = 0.2;
+% rho_acc = rho;
+% theta = 1;
+% x = rho;
+% z = rho;
+% for k = 1:K
+%     y = (1 - theta) * x + theta * z;
+%     [obj_0, grad] = q_mutual_inf(y, PHI, PHI_adj, PHI_C, PHI_C_adj);
+% 
+%     % Perform Blahut-Arimoto iteration
+%     x_prev = x;
+%     z_prev = z;
+%     for t = 0:10000
+%         z = expm(logm(z_prev) + grad / L_acc);
+%         z = z / trace(z);
+%         x = (1 - theta) * x_prev + theta * z;
+%         
+%         [obj_acc(k), ~] = q_mutual_inf(x, PHI, PHI_adj, PHI_C, PHI_C_adj);
+%         if k == 1
+%             obj_prev = obj_0;
+%         else
+%             obj_prev = obj_acc(k - 1);
+%         end
+%         if real(-obj_acc(k)) <= real(-obj_prev - trace(grad * (x - x_prev)) + L_acc*quantum_relative_entropy(x, x_prev))
+%             break
+%         end
+%         L_acc = L_acc * 1.1;
+%         if L_acc > 2
+%             L_acc = 2.0;
+%             break
+%         end        
+%     end    
+%     
+%     a = 1 / (theta^2);
+%     b = 1;
+%     c = -1;
+%     theta = (-b + sqrt(b^2 - 4*a*c)) / (2*a);
+%     
+%     obj_acc_z(k) = q_mutual_inf(z, PHI, PHI_adj, PHI_C, PHI_C_adj);
+%     
+%     if k >= 3
+%     if obj_acc(k) < obj_acc(k-1)
+%         theta = 1;
+%         z = x;
+%     end
+%     end    
+% 
+%     % Compute objective value
+%     fprintf("Iteration: %d \t Objective: %.5e \t L: %.4f \t theta: %.4f\n", k, obj_acc(k), L_acc, theta)
+%     
+%     ub_acc(k) = real(max(eig(grad)));
+% end
 % A = 1 / L;
 % a = 1 / L;
 % mu = 0.25;
@@ -326,18 +330,28 @@ function out = holevo_inf(p, rho)
 end
 
 
-function [func, grad] = q_mutual_inf(rho, PHI, PHI_adj, PHI_C, PHI_C_adj)
+function [func, grad] = q_mutual_inf(rho, PHI, PHI_adj, PHI_C, PHI_C_adj, type)
     PHI_rho = ApplyMap(rho, PHI);
     PHI_C_rho = ApplyMap(rho, PHI_C);
 
-    func = von_neumann_entropy(rho);
-    func = func + von_neumann_entropy(PHI_rho);
-    func = func - von_neumann_entropy(PHI_C_rho);
+    if ~exist('type','var')
+        type = "";
+    end
 
-    grad = -logm(rho);
-    grad = grad - ApplyMap(logm(PHI_rho), PHI_adj);
-    grad = grad + ApplyMap(logm(PHI_C_rho), PHI_C_adj);
-%     grad = grad - eye(size(rho));
+    grad = 0;
+    func = 0;
+    
+    if type == "func" || type == ""
+        func = von_neumann_entropy(rho);
+        func = func + von_neumann_entropy(PHI_rho);
+        func = func - von_neumann_entropy(PHI_C_rho);
+    end
+
+    if type == "grad" || type == ""
+        grad = -logm(rho);
+        grad = grad - ApplyMap(logm(PHI_rho), PHI_adj);
+        grad = grad + ApplyMap(logm(PHI_C_rho), PHI_C_adj);
+    end
 
 end
 

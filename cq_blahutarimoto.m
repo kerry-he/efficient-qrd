@@ -16,7 +16,7 @@ p = ones(n, 1) / n;
 % p = p / sum(p);
 
 %% Setup algorithm
-K = 100;
+K = 80;
 L = 0.03;
 obj_ba = zeros(K, 1);
 obj_acc = zeros(K, 1);
@@ -33,9 +33,11 @@ p_md = p;
 p_ba = p;
 
 alpha = zeros(n, 1);
-tic
+% tic
 L_1=L;
+t_eval1 = zeros(K, 1);
 for k = 1:K
+    tic
     % Calculate ensemble density matrix
     Rho = zeros(N, N);
     for i = 1:n
@@ -61,9 +63,10 @@ for k = 1:K
     end
     
     L_1 = quantum_relative_entropy(Rho, Rho_new) / relative_entropy(p_ba, p_prev);
-    if L_1 < 0 || L_1 > 1
-        L_1 = 1.0;
-    end
+%     if L_1 < 0 || L_1 > 1
+%         L_1 = 1.0;
+%     end
+    t_eval1(k) = toc;
 
     % Compute objective value
     obj_ba(k) = holevo_inf(p_ba, rho);
@@ -71,89 +74,93 @@ for k = 1:K
     
     ub_ba(k) = max(alpha);
 end
-toc
+% toc
 
-% Accelerated method
-tic
-x = p;
-z = p;
-obj_0 = holevo_inf(p, rho);
-theta = 1;
-Lacc = 0.001;
-for k = 1:K
-    y = (1 - theta) * x + theta * z;
-    % Calculate ensemble density matrix
-    Rho = zeros(N, N);
-    for i = 1:n
-        Rho = Rho + y(i)*rho(:, :, i);
-    end
-    
-    % Perform Blahut-Arimoto iteration
-    for i = 1:n
-        alpha(i) = quantum_relative_entropy(rho(:, :, i), Rho);
-    end
+% % Accelerated method
+% tic
+% x = p;
+% z = p;
+% obj_0 = holevo_inf(p, rho);
+% theta = 1;
+% Lacc = 0.001;
+% for k = 1:K
+%     y = (1 - theta) * x + theta * z;
+%     % Calculate ensemble density matrix
+%     Rho = zeros(N, N);
 %     for i = 1:n
-%         z(i) = z(i) * exp((alpha(i) - max(alpha)) / (theta*L));
+%         Rho = Rho + y(i)*rho(:, :, i);
 %     end
-    x_prev = x;
-    z_prev = z;
-    % Line search
-    for t = 0:100
-        for i = 1:n
-            z(i) = z_prev(i) * exp((alpha(i) - max(alpha)) / (theta*Lacc));
-        end  
-        z = z / sum(z); % Normalise probability vector
-        x = (1 - theta) * x_prev + theta * z;
-
-        obj_acc(k) = holevo_inf(x, rho);
-        if k == 1
-            obj_prev = obj_0;
-        else
-            obj_prev = obj_acc(k - 1);
-        end
-        if k > 75
-            break
-        end
-        if -obj_acc(k) <= -obj_prev - (alpha' * (x - x_prev)) + Lacc*relative_entropy(x, x_prev)
-            break
-        end
-        Lacc = Lacc * 1.1;
-        
-        if Lacc > 1
-            Lacc = 1.0;
-            break
-        end
-    end    
-
-    a = 1 / (theta^2);
-    b = 1;
-    c = -1;
-    theta = (-b + sqrt(b^2 - 4*a*c)) / (2*a);        
-%     theta = 2 / (k + 2);
-    
-    % Compute objective value
-    obj_acc(k) = holevo_inf(x, rho);
-    obj_acc_z(k) = holevo_inf(z, rho);
-    
-    if k >= 10
-    if obj_acc(k) < obj_acc(k-1)
-        theta = 1;
-        z = x;
-        Lacc = 0.001;
-    end
-    end
-    fprintf("Iteration: %d \t Objective: %.5e \t L: %.5f \t theta: %.4f\n", k, obj_acc(k), Lacc, theta)
-    
-    ub_acc(k) = max(alpha);
-end
-toc
+%     
+%     % Perform Blahut-Arimoto iteration
+%     for i = 1:n
+%         alpha(i) = quantum_relative_entropy(rho(:, :, i), Rho);
+%     end
+% %     for i = 1:n
+% %         z(i) = z(i) * exp((alpha(i) - max(alpha)) / (theta*L));
+% %     end
+%     x_prev = x;
+%     z_prev = z;
+%     % Line search
+%     for t = 0:100
+%         for i = 1:n
+%             z(i) = z_prev(i) * exp((alpha(i) - max(alpha)) / (theta*Lacc));
+%         end  
+%         z = z / sum(z); % Normalise probability vector
+%         x = (1 - theta) * x_prev + theta * z;
+% 
+%         obj_acc(k) = holevo_inf(x, rho);
+%         if k == 1
+%             obj_prev = obj_0;
+%         else
+%             obj_prev = obj_acc(k - 1);
+%         end
+%         if k > 75
+%             break
+%         end
+%         if -obj_acc(k) <= -obj_prev - (alpha' * (x - x_prev)) + Lacc*relative_entropy(x, x_prev)
+%             break
+%         end
+%         Lacc = Lacc * 1.1;
+%         
+%         if Lacc > 1
+%             Lacc = 1.0;
+%             break
+%         end
+%     end    
+% 
+%     a = 1 / (theta^2);
+%     b = 1;
+%     c = -1;
+%     theta = (-b + sqrt(b^2 - 4*a*c)) / (2*a);        
+% %     theta = 2 / (k + 2);
+%     
+%     % Compute objective value
+%     obj_acc(k) = holevo_inf(x, rho);
+%     obj_acc_z(k) = holevo_inf(z, rho);
+%     
+%     if k >= 10
+%     if obj_acc(k) < obj_acc(k-1)
+%         theta = 1;
+%         z = x;
+%         Lacc = 0.001;
+%     end
+%     end
+%     fprintf("Iteration: %d \t Objective: %.5e \t L: %.5f \t theta: %.4f\n", k, obj_acc(k), Lacc, theta)
+%     
+%     ub_acc(k) = max(alpha);
+% end
+% toc
 
 % Line search
-tic
+% tic
 p_ls = p;
 obj_0 = holevo_inf(p, rho);
-Lk = 0.001;
+Lk = 0.1;
+
+t_eval = zeros(K, 1);
+
 for k = 1:K
+    tic
     % Calculate ensemble density matrix
     Rho = zeros(N, N);
     for i = 1:n
@@ -196,18 +203,20 @@ for k = 1:K
         Rho_new = Rho_new + p_ls(i)*rho(:, :, i);
     end
     
-    Lk = quantum_relative_entropy(Rho, Rho_new) / relative_entropy(p_ls, p_prev);
-    if Lk < 0 || Lk > 1
-        Lk = 1.0;
+    Lk = (quantum_relative_entropy(Rho, Rho_new) + quantum_relative_entropy(Rho_new, Rho)) / (relative_entropy(p_ls, p_prev) + relative_entropy(p_prev, p_ls));
+    if Lk <= 0 || Lk > 1
+        Lk = 1e-5;
     end
+
+    t_eval(k) = toc;
     
     % Compute objective value
 %     obj_ls(k) = holevo_inf(p_ls, rho);
     fprintf("Iteration: %d \t Objective: %.5e \t L: %.5f\n", k, obj_ls(k), Lk)
     
-    ub_ls(k) = obj_ls(k) - alpha' * p_ls + max(alpha);
+    ub_ls(k) = obj_ls(k) - alpha' * p_ls + max(alpha);  
 end
-toc
+% toc
 
 % Accelerated method
 tic
@@ -322,9 +331,9 @@ for k = 1:K
 
     % Compute objective value
     obj_acc2(k) = holevo_inf(x, rho);
-    fprintf("Iteration: %d \t Objective: %.5e\n", k, 0.155809028188058-obj_acc2(k))
+    fprintf("Iteration: %d \t Objective: %.5e\n", k, obj_acc2(k))
     
-    ub_acc2(k) = max(alpha);
+    ub_acc2(k) = max(alpha);   
 end
 toc
 
@@ -332,7 +341,6 @@ toc
 
 semilogy(min([ub_ba; ub_acc; ub_acc2; ub_ls]) - obj_ba, 'r')
 hold on
-semilogy(min([ub_ba; ub_acc; ub_acc2; ub_ls]) - obj_acc_z, 'g')
 semilogy(min([ub_ba; ub_acc; ub_acc2; ub_ls]) - obj_acc2, 'b')
 semilogy(min([ub_ba; ub_acc; ub_acc2; ub_ls]) - obj_ls, 'k')
 
@@ -340,14 +348,14 @@ semilogy(min([ub_ba; ub_acc; ub_acc2; ub_ls]) - obj_ls, 'k')
 legend("BA", "Acc", "Acc2", "ls")
 
 
-figure
-semilogy(ub_ba - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'r')
-hold on
-semilogy(ub_acc - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'g')
-semilogy(ub_acc2 - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'b')
-semilogy(ub_ls - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'k')
-
-legend("BA", "Acc", "Acc2", "ls")
+% figure
+% semilogy(ub_ba - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'r')
+% hold on
+% semilogy(ub_acc - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'g')
+% semilogy(ub_acc2 - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'b')
+% semilogy(ub_ls - max([obj_ba; obj_acc; obj_acc2; obj_ls]), 'k')
+% 
+% legend("BA", "Acc", "Acc2", "ls")
 
 
 

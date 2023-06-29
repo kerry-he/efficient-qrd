@@ -1,26 +1,28 @@
 clear all; close all; clc;
 
-m = 16;      % Number of inputs
-n = 16;      % Number of outputs
+m = 4;      % Number of inputs
+n = 4;      % Number of outputs
 
 rng(3)
 Q = rand(n, m);
-Q = Q ./ sum(Q);
+% Q = Q ./ sum(Q);
 
 % p = ones(m, 1) / m;
 % p = zeros(m, 1) / m; p(1:2) = [0.9 0.1];
 p = rand(m, 1); p = p / sum(p);
 
-rho = rand(n, m);
+Q = ones(n, 1)*p';
+
+% rho = rand(n, m);
 % U = RandomUnitary(n, 1);
 % d = rand(m, 1); d = d / sum(d);
 % rho = U * diag(d) * U';
-% rho = ones(n) - eye(n);
+rho = ones(n) - eye(n);
 
-lambda = 1.0;
+lambda = 3;
 
 %% Optimization algorithm
-M = 2000;
+M = 500;
 obj = zeros(M, 1);
 lagrangian = zeros(M, 1);
 lambda_hist = zeros(M, 1);
@@ -105,16 +107,25 @@ semilogy(lagrangian - lagrangian(end))
 semilogy(lagrangian - lb')
 
 
-%% Functions
-function H = relative_entropy(p, q)
-    H = 0;
-    for i = 1:length(p)
-        if p(i) ~= 0
-            H = H + p(i) * log(p(i) / q(i));
-        end
-    end
-end
 
+
+%% 
+
+
+
+%% Functions
+% function H = relative_entropy(p, q)
+%     H = 0;
+%     for i = 1:length(p)
+%         if p(i) ~= 0
+%             H = H + p(i) * log(p(i) / q(i));
+%         end
+%     end
+% end
+
+function H = relative_entropy(p, q)
+    H = sum(p .* log(p ./ q), 'all');
+end
 
 function I = mutual_information(p, Q)
     q = Q*p;
