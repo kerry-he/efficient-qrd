@@ -4,7 +4,7 @@ addpath(genpath('quantinf'))
 addpath(genpath('cvxquad-master'))
 
 rng(1)
-N = 32; % Density matrix size
+N = 64; % Density matrix size
 
 A = RandomDensityMatrix(N, 1);
 [~, A] = eig(A);
@@ -50,7 +50,7 @@ idx_sp = [i_sp, j_sp];
 %% Experiments
 K = 100;
 D = 0.5;
-lambda = 5.5;
+lambda = 5;
 
 % Change of variables
 RHO_QR = kron(A, R);
@@ -116,7 +116,7 @@ while true
 %         end
 %     end
     if k > 2
-        if abs(lgn(k) - lgn(k-1)) < 1e-8
+        if abs(lgn(k) - lgn(k-1)) < 1e-15
             break
         end
     end
@@ -198,38 +198,19 @@ function [RHO_QR, rho_D, rho_U, V, RHO_inf] = trace_preserve_V(RHO_QR, V, AR, la
     
     fprintf("\t Error: %.5e\n", gap)
 
-
-    theta = 1;
-    t = 1000;
-    v = V;
-
     alpha = 1e-7;
     beta = 0.1;
     while gap >= EPS
 
         % Compute Newton step
-%         J = get_jacobian(D, U, idx_sp);
-%         p = J \ F;
+        J = get_jacobian(D, U, idx_sp);
+        p = J \ F;
 
-        t_prev = t;
-        t = 1000;
-        theta_prev = theta;
-
-
-        a = sqrt(theta_prev^2 * t / t_prev);
-        theta = (-a + sqrt(a^2 + 4)) / 2;
-        y = (1 - theta)*V + theta*v;
-    
-        Y = X_PREV - kron(I, y) + lambda*AR;
-        [Uy, Dy] = fast_eig(Y, P, idx_sp);
-        Y_QR = Uy * sparse(1:N^2, 1:N^2, exp(Dy)) * Uy';    
-        F = diagPartialTrace(Y_QR, 1, N) - R;
-        objY = -trace(Y_QR) - sum(R .* diag(y));
-        
+        t = 1;
         while true
             % Update with Newton step
-            step = diag(F);
-%             step = -diag(p);
+%             step = diag(F);
+            step = -diag(p);
             V_new = V + t*step;
     
             % Cheap diagonalisation of X and V
@@ -241,26 +222,15 @@ function [RHO_QR, rho_D, rho_U, V, RHO_inf] = trace_preserve_V(RHO_QR, V, AR, la
             RHO_QR = U * sparse(1:N^2, 1:N^2, expD) * U';
             obj_new = -trace(RHO_QR) - sum(R .* diag(V_new));
 
-            if -obj_new <= -objY - t*norm(F)*0.0
+            if -obj_new <= -obj - alpha*t*trace(diag(F) * step)
                 break
             end
             t = t * beta;
-            a = sqrt(theta^2 * t / t_prev);
-            theta = (-a + sqrt(a^2 + 4)) / 2;
-            y = (1 - theta)*V + theta*v;
-        
-            Y = X_PREV - kron(I, y) + lambda*AR;
-            [Uy, Dy] = fast_eig(Y, P, idx_sp);
-            Y_QR = Uy * sparse(1:N^2, 1:N^2, exp(Dy)) * Uy';    
-            F = diagPartialTrace(Y_QR, 1, N) - R;    
-            objY = -trace(Y_QR) - sum(R .* diag(y));
         end
 
         if obj - obj_new == 0
             break
         end
-
-        v = V + (V_new - V)/theta;
 
         F = diagPartialTrace(RHO_QR, 1, N) - R;
         obj = obj_new;
