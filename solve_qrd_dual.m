@@ -1,4 +1,4 @@
-function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, lambda, EPS)
+function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, kappa, EPS)
     %SOLE_QRD_DUAL Summary of this function goes here
     %   Detailed explanation goes here
 
@@ -9,7 +9,7 @@ function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, lambda, EPS)
 
     % Cheap diagonalisation of X and V
     X_PREV = kron(sparse(1:N, 1:N, log(sparsePartialTrace(RHO, 2))), I);
-    X = X_PREV - kron(I, V) + lambda*AR;
+    X = X_PREV - kron(I, V) + kappa*AR;
     [U, D] = sparseEig(X);
 
     % Function evaluation
@@ -41,7 +41,7 @@ function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, lambda, EPS)
             V_new = V + t*step;
     
             % Cheap diagonalisation of X and V
-            X = X_PREV - kron(I, V_new) + lambda*AR;
+            X = X_PREV - kron(I, V_new) + kappa*AR;
             [U, D] = sparseEig(X);
     
             % Function evaluation
