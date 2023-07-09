@@ -1,4 +1,4 @@
-function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, kappa, EPS)
+function [RHO, RHO_D, RHO_inf, V] = solve_qrd_dual(RHO, V, AR, kappa, EPS)
     %SOLE_QRD_DUAL Summary of this function goes here
     %   Detailed explanation goes here
 
@@ -73,7 +73,7 @@ function [RHO, rho_D, V, RHO_inf] = solve_qrd_dual(RHO, V, AR, kappa, EPS)
 
     RHO_inf = RHO;
     RHO = RHO_fix;
-    rho_D = D_fix;
+    RHO_D = D_fix;
 
 end
 

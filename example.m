@@ -11,5 +11,5 @@ A = RandomDensityMatrix(N, 1); % Input density matrix
 kappa = 5.0;
 
 tic
-[RHO, obj] = solveQrd(A, kappa);
+[RHO, obj, lb] = solveQrd(A, kappa);
 toc

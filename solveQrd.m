@@ -1,4 +1,4 @@
-function [BR, obj] = solveQrd(A, kappa, varargin)
+function [BR, obj, lb] = solveQrd(A, kappa, varargin)
     %SOLVEQRD Summary of this function goes here
     %   Detailed explanation goes here
 
@@ -19,25 +19,27 @@ function [BR, obj] = solveQrd(A, kappa, varargin)
     BR_inf = BR;
     V = x0.dual;
 
-    RHO_Q = sparsePartialTrace(BR, 2, N);
-    obj_prev = entropy(RHO_Q) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
+    B = sparsePartialTrace(BR, 2, N);
+    obj_prev = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
     
     EPS = opt.eps_init;
     
     for k = 1:opt.max_iter
 
         % Perform Blahut-Arimoto iteration
-        [BR, BR_D, V, BR_inf] = solve_qrd_dual(BR_inf, V, AR, kappa, EPS);
+        [BR, BR_D, BR_inf, V] = solve_qrd_dual(BR_inf, V, AR, kappa, EPS);
     
         % Compute objective value
-        RHO_Q = sparsePartialTrace(BR, 2);
-        obj = entropy(RHO_Q) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
+        B = sparsePartialTrace(BR, 2);
+        obj = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
 
         if k > 1
             EPS = max(min([abs(obj - obj_prev), EPS]), opt.tol);
         end
 
-        fprintf("Iteration: %d \t Objective: %.5e \t EPS: %.5e\n", k, abs(obj - obj_prev), EPS)
+        if opt.verbose
+            fprintf("Iteration: %d \t Change in obj: %.5e \t EPS: %.5e\n", k, abs(obj - obj_prev), EPS)
+        end
     
         if abs(obj - obj_prev) < opt.tol
             break
@@ -46,6 +48,26 @@ function [BR, obj] = solveQrd(A, kappa, varargin)
         obj_prev = obj;
         
     end
+
+    if opt.get_gap
+        if opt.verbose
+            fprintf("\nComputing lower bound\n")
+        end
+
+        % Solve to machine precision
+        [~, ~, BR_inf, V] = solve_qrd_dual(BR_inf, V, AR, kappa, 1e-15);
+
+        % Compute lower bound
+        grad = kron((log(B) - log(sparsePartialTrace(BR_inf, 2, N))), ones(N, 1));
+        grad = grad - kron(ones(N, 1), diag(V));
+        lb = 0;
+        for i = 1:N
+            lb = lb + min(grad(i:N:end)) * A(i);
+        end
+    else
+        lb = [];
+    end
+
 end
 
 
@@ -142,4 +164,5 @@ function validateOptionalInputs(opt, x0)
             || ~all(x0.dual == ctranspose(x0.dual), 'all')
         error('Input x0.primal must be a square Hermitian matrix'); 
     end
+
 end
