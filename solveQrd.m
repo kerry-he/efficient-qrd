@@ -1,6 +1,59 @@
-function [BR, obj, lb] = solveQrd(A, kappa, varargin)
-    %SOLVEQRD Summary of this function goes here
-    %   Detailed explanation goes here
+function [rate, distortion, info] = solveQrd(A, kappa, varargin)
+    %SOLVEQRD Main function to compute the quantum rate-distortion function
+    %for entanglement fidelity distortion.
+    %=====================================================================
+    %   INPUTS
+    %=====================================================================
+    %   A:      Input density matrix (positive semidefinite, unit trace)
+    %   kappa:  Non-negative fixed dual variable corresponding to 
+    %           distortion constraint
+    %
+    %   opt:    (OPTIONAL) Structure containing solver options
+    %   - opt.max_iter:     Maximum mirror descent iterations
+    %   - opt.tol:          Tolerance at which mirror descent termiantes
+    %   - opt.get_gap:      Boolean for whether to compute lower bound to
+    %                       optimal value
+    %   - opt.verbose:      0: Suppress all output; 1: Print outer iter.
+    %                       progress; 2: Print inner and outer iter. 
+    %                       progress
+    %   - opt.sub:          Subproblem specific settings
+    %       - opt.sub.tol:      Initial tolerance to solve to
+    %       - opt.sub.alg:      'gradient': Use gradient descent; 
+    %                           'newton': Use Newton's method
+    %       - opt.sub.t0:       Initial step size to backtrack from
+    %       - opt.sub.alpha:    Backtracking parameter
+    %       - opt.sub.beta:     Backtracking parameter
+    %
+    %   x0:     (OPTIONAL) Structure containing initial primal and
+    %           subproblem dual to initialize from
+    %   - x0.primal:        Initial primal variable
+    %   - x0.dual:          Intiial subproblem dual variable
+    %=====================================================================
+    %   OUTPUTS
+    %=====================================================================
+    %   rate:           Rate (nats)
+    %   distortion:     Distortion
+    %
+    %   info:   Structure containing additional information about the solve
+    %   - info.time:        Total time elapsed (s)
+    %   - info.iter:        Total mirror descent (i.e., outer) iterations
+    %   - info.obj_ub:      Upper bound on optimal value
+    %   - info.obj_lb:      Lower bound on optimal value
+    %   - info.gap:         Upper bound on optimality gap
+    %   - info.primal:      Solution primal variable
+    %   - info.dub_dual:    Final solution dual variable to subproblem
+    %=====================================================================
+    %   EXAMPLE USAGE
+    %=====================================================================
+    %   % Define input density matrix and dual variable with default
+    %   options and intialization
+    %   A = [0.2 0; 0 0.8]; kappa = 1.0; opt = []; x0 = [];
+    %
+    %   [rate, distortion]          = SOLVEQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt, x0);
+
 
     % Validate input arguments
     validateInputs(A, kappa);
@@ -19,28 +72,29 @@ function [BR, obj, lb] = solveQrd(A, kappa, varargin)
     BR_inf = BR;
     V = x0.dual;
 
-    B = sparsePartialTrace(BR, 2, N);
+    B = sparsePartialTrace(BR, 2);
     obj_prev = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
+
+    timer = tic;
     
-    EPS = opt.eps_init;
-    
+    % Main mirror descent procedure
     for k = 1:opt.max_iter
 
-        % Perform Blahut-Arimoto iteration
-        [BR, BR_D, BR_inf, V] = solve_qrd_dual(BR_inf, V, AR, kappa, EPS);
+        % Perform mirror descent iteration
+        [BR, BR_D, BR_inf, V] = solveQrdSub(BR_inf, V, AR, kappa, opt);
     
         % Compute objective value
         B = sparsePartialTrace(BR, 2);
         obj = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
 
-        if k > 1
-            EPS = max(min([abs(obj - obj_prev), EPS]), opt.tol);
-        end
+        % Update subproblem tolerance
+        opt.sub.tol = max(min([abs(obj - obj_prev), opt.sub.tol]), opt.tol);
 
         if opt.verbose
-            fprintf("Iteration: %d \t Change in obj: %.5e \t EPS: %.5e\n", k, abs(obj - obj_prev), EPS)
+            fprintf("Iteration: %d \t Change in obj: %.5e \t EPS: %.5e\n", k, abs(obj - obj_prev), opt.sub.tol)
         end
     
+        % Check if we have solved to desired tolerance
         if abs(obj - obj_prev) < opt.tol
             break
         end
@@ -49,24 +103,41 @@ function [BR, obj, lb] = solveQrd(A, kappa, varargin)
         
     end
 
+    % Lower bound
     if opt.get_gap
         if opt.verbose
             fprintf("\nComputing lower bound\n")
         end
 
         % Solve to machine precision
-        [~, ~, BR_inf, V] = solve_qrd_dual(BR_inf, V, AR, kappa, 1e-15);
+        opt.sub.tol = eps;
+        [BR, BR_D, BR_inf, V] = solveQrdSub(BR_inf, V, AR, kappa, opt);
 
-        % Compute lower bound
-        grad = kron((log(B) - log(sparsePartialTrace(BR_inf, 2, N))), ones(N, 1));
+        % Frank-Wolfe lower bound
+        grad = kron((log(B) - log(sparsePartialTrace(BR_inf, 2))), ones(N, 1));
         grad = grad - kron(ones(N, 1), diag(V));
         lb = 0;
         for i = 1:N
             lb = lb + min(grad(i:N:end)) * A(i);
         end
+
+        B = sparsePartialTrace(BR, 2);
     else
         lb = [];
     end
+
+    % Compute corresponding rate-distortion pair from solution
+    rate = entropy(A) + entropy(B) - entropy(BR_D);
+    distortion = 1 - AR_vec' * BR * AR_vec;
+
+    % Populate info structure
+    info.time = toc(timer);
+    info.iter = k;
+    info.obj_ub = obj + entropy(A);
+    info.obj_lb = lb + entropy(A);
+    if isempty(lb); info.gap = []; else; info.gap = obj - lb; end
+    info.primal = BR;
+    info.sub_dual = V;
 
 end
 
@@ -94,13 +165,13 @@ function [opt, x0] = defaultOptionalInputs(A, argin)
 
     if ~isfield(opt, 'max_iter');   opt.max_iter    = 1000;     end
     if ~isfield(opt, 'tol');        opt.tol         = 1e-15;    end
-    if ~isfield(opt, 'eps_init');   opt.eps_init    = 1e-2;     end
     if ~isfield(opt, 'get_gap');    opt.get_gap     = true;     end
     if ~isfield(opt, 'verbose');    opt.verbose     = 1;        end
 
     if ~isfield(opt, 'sub');        opt.sub         = [];       end
+    if ~isfield(opt.sub, 'tol');    opt.sub.tol     = 1e-2;     end
     if ~isfield(opt.sub, 'alg');    opt.sub.alg     = 'newton'; end
-    if ~isfield(opt.sub, 't');      opt.sub.t       = 1.0;      end
+    if ~isfield(opt.sub, 't0');     opt.sub.t0      = 1.0;      end
     if ~isfield(opt.sub, 'alpha');  opt.sub.alpha   = 0.1;      end
     if ~isfield(opt.sub, 'beta');   opt.sub.beta    = 0.1;      end
 
@@ -130,8 +201,8 @@ function validateOptionalInputs(opt, x0)
     if opt.tol < 0
         error('Option tol must be nonnegative'); 
     end
-    if opt.eps_init < 0
-        error('Option eps_init must be nonnegative'); 
+    if opt.sub.tol < 0
+        error('Option sub_tol must be nonnegative'); 
     end
     if ~islogical(opt.get_gap)
         error('Option get_gap must be a boolean'); 
@@ -145,8 +216,8 @@ function validateOptionalInputs(opt, x0)
         error(['Option sub.alg is invalid ' ...
             '(must be ''gradient'' or ''newton'')'])
     end
-    if opt.sub.t < 0
-        error('Option sub.t must be nonnegative'); 
+    if opt.sub.t0 < 0
+        error('Option sub.t0 must be nonnegative'); 
     end
     if opt.sub.alpha < 0
         error('Option sub.alpha must be nonnegative'); 

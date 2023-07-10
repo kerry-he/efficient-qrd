@@ -1,15 +1,14 @@
 clear all; close all; clc;
 
 addpath(genpath('src'))
+addpath(genpath('QETLAB'))
 
 %% Generate problem data
 
 rng(1)
-N = 16; % Density matrix size
+N = 32; % Density matrix size
 
 A = RandomDensityMatrix(N, 1); % Input density matrix
-kappa = 5.0;
+kappa = 1.0;
 
-tic
-[RHO, obj, lb] = solveQrd(A, kappa);
-toc
+[rate, distortion, info] = solveQrd(A, kappa);
