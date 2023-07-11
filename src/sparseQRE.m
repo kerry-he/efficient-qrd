@@ -6,7 +6,7 @@ function S = sparseQRE(rho_D, rho_U, sigma_D, sigma_U)
     dgl_idx = 1:N^2; dgl_idx(blk_idx) = [];
 
     % Compute diagonal part of entropy
-    S = relative_entropy(rho_D(dgl_idx), sigma_D(dgl_idx));
+    S = relativeEntropy(rho_D(dgl_idx), sigma_D(dgl_idx));
 
     % Compute block part of entropy
     rho_D_blk = full(rho_D(blk_idx));
@@ -18,4 +18,5 @@ function S = sparseQRE(rho_D, rho_U, sigma_D, sigma_U)
 
     S = S - entropy(rho_D_blk);
     S = S - trace(sparse(1:N, 1:N, rho_D_blk) * rho_sigma_U * sparse(1:N, 1:N, log(sigma_D_blk)) * rho_sigma_U');
+    
 end

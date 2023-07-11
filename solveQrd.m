@@ -61,19 +61,29 @@ function [rate, distortion, info] = solveQrd(A, kappa, varargin)
     validateOptionalInputs(opt, x0);
 
     N = length(A);
+    printHeading(N, kappa, opt.verbose)
     
     % Pre-process input state and compute purification
     A = eig(A);
     [AR, ~, AR_vec] = Purify(A);
+    entrA = entropy(A);
 
     % Initialize primal and dual variables
+    BR_feas = x0.primal; BR_D_feas = sparseEig(BR_feas);
     BR = x0.primal;
-    BR_D = sparseEig(BR);
-    BR_inf = BR;
     V = x0.dual;
 
-    B = sparsePartialTrace(BR, 2);
-    obj_prev = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
+    % Compute rate-distortion pair and objective
+    B_feas = sparsePartialTrace(BR_feas, 2);
+    rate = entrA + entropy(B_feas) - entropy(BR_D_feas);
+    distortion = 1 - AR_vec' * BR_feas * AR_vec;
+    obj_prev = rate + kappa*distortion;
+
+    if opt.verbose
+        fprintf(" %d  \t  %.3f   %.3f | %.3f           ", ...
+            0, abs(rate), abs(distortion), obj_prev)
+        if opt.verbose == 1; fprintf("\n"); end
+    end    
 
     timer = tic;
     
@@ -81,21 +91,26 @@ function [rate, distortion, info] = solveQrd(A, kappa, varargin)
     for k = 1:opt.max_iter
 
         % Perform mirror descent iteration
-        [BR, BR_D, BR_inf, V] = solveQrdSub(BR_inf, V, AR, kappa, opt);
+        [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt);
     
         % Compute objective value
-        B = sparsePartialTrace(BR, 2);
-        obj = entropy(B) - entropy(BR_D) - kappa*(AR_vec' * BR * AR_vec);
+        B_feas = sparsePartialTrace(BR_feas, 2);
+        rate = entrA + entropy(B_feas) - entropy(BR_D_feas);
+        distortion = 1 - AR_vec' * BR_feas * AR_vec;
+        obj = rate + kappa*distortion;
 
         % Update subproblem tolerance
         opt.sub.tol = max(min([abs(obj - obj_prev), opt.sub.tol]), opt.tol);
 
         if opt.verbose
-            fprintf("Iteration: %d \t Change in obj: %.5e \t EPS: %.5e\n", k, abs(obj - obj_prev), opt.sub.tol)
+            fprintf(" %d  \t  %.3f   %.3f | %.3f   %.1e ", ...
+                k, rate, distortion, obj, abs(obj - obj_prev))
+            if opt.verbose == 1; fprintf("\n"); end
         end
     
         % Check if we have solved to desired tolerance
         if abs(obj - obj_prev) < opt.tol
+            if opt.verbose == 2; fprintf("|\n"); end
             break
         end
 
@@ -106,41 +121,48 @@ function [rate, distortion, info] = solveQrd(A, kappa, varargin)
     % Lower bound
     if opt.get_gap
         if opt.verbose
-            fprintf("\nComputing lower bound\n")
+            fprintf("\nComputing lower bound...\n\n")
         end
 
-        % Solve to machine precision
+        % Solve to machine precision using Newton's method
         opt.sub.tol = eps;
-        [BR, BR_D, BR_inf, V] = solveQrdSub(BR_inf, V, AR, kappa, opt);
+        opt.sub.alg = 'newton'; opt.sub.t0 = 1;
+        if opt.verbose; opt.verbose = 1; end
+        B = sparsePartialTrace(BR, 2);
+        [~, ~, BR, V] = solveQrdSub(BR, V, AR, kappa, opt);
 
         % Frank-Wolfe lower bound
-        grad = kron((log(B) - log(sparsePartialTrace(BR_inf, 2))), ones(N, 1));
+        grad = kron((log(B) - log(sparsePartialTrace(BR, 2))), ones(N, 1));
         grad = grad - kron(ones(N, 1), diag(V));
-        lb = 0;
+        lb = entrA + kappa;
         for i = 1:N
             lb = lb + min(grad(i:N:end)) * A(i);
         end
-
-        B = sparsePartialTrace(BR, 2);
     else
         lb = [];
     end
 
-    % Compute corresponding rate-distortion pair from solution
-    rate = entropy(A) + entropy(B) - entropy(BR_D);
-    distortion = 1 - AR_vec' * BR * AR_vec;
-
     % Populate info structure
     info.time = toc(timer);
     info.iter = k;
-    info.obj_ub = obj + entropy(A);
-    info.obj_lb = lb + entropy(A);
-    if isempty(lb); info.gap = []; else; info.gap = obj - lb; end
-    info.primal = BR;
+    info.obj_ub = obj;
+    info.obj_lb = lb;
+    if ~opt.get_gap; info.gap = []; else; info.gap = obj - lb; end
+    info.primal = BR_feas;
     info.sub_dual = V;
+
+    if opt.verbose
+        fprintf("Solved in %.3g seconds with rate-distortion: \n\n", info.time)
+        fprintf("\tRate:       %.4f (nats)\n", rate)
+        fprintf("\tDistortion: %.4f\n", distortion)
+        if opt.get_gap
+            fprintf("\nand solved to within optimality gap of %.1e.\n\n", info.gap)
+        end
+    end
 
 end
 
+%% Auxiliary functions
 
 function [opt, x0] = defaultOptionalInputs(A, argin)
 
@@ -236,4 +258,17 @@ function validateOptionalInputs(opt, x0)
         error('Input x0.primal must be a square Hermitian matrix'); 
     end
 
+end
+
+function printHeading(N, kappa, verbose)
+    if verbose
+        fprintf("Computing quantum rate-distortion with entanglement fidelity \n" + ...
+            "distortion for N = %d input state and \x03BA = %.1f dist. multiplier\n\n", N, kappa);
+    end
+
+    if verbose == 2
+        fprintf(" it       rate    dist  |  obj     \x0394 obj  | (sub)it  (sub)gap \n")
+    elseif verbose == 1
+        fprintf(" it       rate    dist  |  obj     \x0394 obj  \n")
+    end
 end

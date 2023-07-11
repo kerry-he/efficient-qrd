@@ -1,38 +1,43 @@
-function [RHO, RHO_D, RHO_inf, V] = solveQrdSub(RHO, V, AR, kappa, opt)
-    %SOLE_QRD_DUAL Summary of this function goes here
-    %   Detailed explanation goes here
+function [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt)
+    %SOLE_QRD_DUAL Solves the mirror descent subproblem for the quantum
+    %rate-distortion problem with entanglement fidelity distortion.
 
-    NR = length(V);
-    N = length(RHO) / NR;
+    N = sqrt(length(BR));
     R = sparsePartialTrace(AR, 1);
     I = speye(N);
 
-    % Cheap diagonalisation of X and V
-    X_PREV = kron(spdiag(log(sparsePartialTrace(RHO, 2))), I);
-    X = X_PREV - kron(I, V) + kappa*AR;
-    [U, D] = sparseEig(X);
+    % Compute primal iterate
+    X_prev = kron(spdiag(log(sparsePartialTrace(BR, 2))), I);
+    X = X_prev - kron(I, V) + kappa*AR;
+    [BR_U, D] = sparseEig(X);
+    BR_D = exp(D);
+    BR = BR_U * spdiag(BR_D) * BR_U';
+
+    % Compute feasible primal iterate
+    BR_feas = proj(BR, R);
+    [BR_U_feas, BR_D_feas] = sparseEig(BR_feas);
 
     % Function evaluation
-    expD = exp(D);
-    RHO = U * spdiag(expD) * U';
-    obj = -trace(RHO) - sum(R .* diag(V));
-    F = sparsePartialTrace(RHO, 1) - R;
+    obj = -trace(BR) - sum(R .* diag(V));
+    grad = sparsePartialTrace(BR, 1) - R;
 
-    RHO_fix = fix_R(RHO, R);
-    [U_fix, D_fix] = sparseEig(RHO_fix);
-
-    gap = sparseQRE(D_fix, U_fix, expD, U) - trace(RHO_fix) + trace(RHO);
+    % Optimality gap for inexact stopping criterion
+    gap = sparseQRE(BR_D_feas, BR_U_feas, BR_D, BR_U) ...
+        - trace(BR_feas) + trace(BR);
     
-    fprintf("\t Error: %.5e\n", gap)
+    if opt.verbose == 2
+        fprintf("|  %d  \t  %.1e \n", 0, gap)
+    end    
 
+    k = 1;
     while gap >= opt.sub.tol
 
         % Compute ascent direction
         if strcmp(opt.sub.alg, 'gradient')
-            p = F;
+            p = grad;
         elseif strcmp(opt.sub.alg, 'newton')
-            J = get_jacobian(D, U);
-            p = -J \ F;
+            Hess = getHessian(D, BR_U);
+            p = -Hess \ grad;
         else
             error(['Option sub.alg is invalid ' ...
                 '(must be ''gradient'' or ''newton'')'])
@@ -41,51 +46,102 @@ function [RHO, RHO_D, RHO_inf, V] = solveQrdSub(RHO, V, AR, kappa, opt)
         t = opt.sub.t0;
 
         while true
-            % Update with Newton step
+            % Update dual variable
             V_new = V + t*spdiag(p);
     
-            % Cheap diagonalisation of X and V
-            X = X_PREV - kron(I, V_new) + kappa*AR;
-            [U, D] = sparseEig(X);
-    
-            % Function evaluation
-            expD = exp(D);
-            RHO = U * spdiag(expD) * U';
-            obj_new = -trace(RHO) - sum(R .* diag(V_new));
+            % Compute primal iterate
+            X = X_prev - kron(I, V_new) + kappa*AR;
+            [BR_U, D] = sparseEig(X);
+            BR_D = exp(D);
+            BR = BR_U * spdiag(BR_D) * BR_U';
 
-            if -obj_new <= -obj - opt.sub.alpha*t*(F' * p)
+            % Function evaluation
+            obj_new = -trace(BR) - sum(R .* diag(V_new));
+
+            % Backtracking line search
+            if -obj_new <= -obj - opt.sub.alpha*t*(grad' * p)
                 break
             end
             t = t * opt.sub.beta;
         end
 
+        % Exit if no progress is being made
         if obj - obj_new == 0
             break
         end
 
-        F = sparsePartialTrace(RHO, 1) - R;
+        grad = sparsePartialTrace(BR, 1) - R;
         obj = obj_new;
         V = V_new;
 
-        RHO_fix = fix_R(RHO, R);
-        [U_fix, D_fix] = sparseEig(RHO_fix);
-
-        gap = sparseQRE(D_fix, U_fix, expD, U) - trace(RHO_fix) + trace(RHO);
+        % Compute feasible primal iterate
+        BR_feas = proj(BR, R);
+        [BR_U_feas, BR_D_feas] = sparseEig(BR_feas);
+        
+        % Optimality gap for inexact stopping criterion
+        gap = sparseQRE(BR_D_feas, BR_U_feas, BR_D, BR_U) ...
+            - trace(BR_feas) + trace(BR);
     
-        fprintf("\t Error: %.5e\n", gap)
-    end
+        if opt.verbose == 2
+            fprintf("                        |                 |  %d  \t  %.1e \n", ...
+                k, gap)
+        end    
+        k = k + 1;
 
-    RHO_inf = RHO;
-    RHO = RHO_fix;
-    RHO_D = D_fix;
+    end
 
 end
 
-function fixed_rho = fix_R(rho, R)
+%% Auxiliary functions
+
+function fixed_rho = proj(rho, R)
     N = length(R);
     I = speye(N);
     fix = (R ./ sparsePartialTrace(rho, 1)).^0.5;
     fix = spdiag(fix);
 
     fixed_rho = kron(I, fix) * rho * kron(I, fix');
+end
+
+function J = getHessian(D, U)
+    N = sqrt(length(D));
+
+    J = zeros(N, N);
+    Df = getFddMatrix(D);
+
+    for i = 1:N
+        H = sparse(i:N:N^2, i:N:N^2, -1, N^2, N^2);
+        J_temp = ddTrFunc(Df, U, H);
+        J(i, :) = sparsePartialTrace(J_temp, 1, N);
+    end
+end
+
+function Df = getFddMatrix(D)
+
+    N = sqrt(length(D));
+
+    blk_idx = 1:N+1:N^2;
+    dgl_idx = 1:N^2; dgl_idx(blk_idx) = [];
+
+    temp_idx = repmat(blk_idx, N, 1);
+    idx = [reshape(temp_idx,  [N^2, 1]); dgl_idx'];
+    jdx = [reshape(temp_idx', [N^2, 1]); dgl_idx'];
+
+    v = zeros(length(idx), 1);
+
+    for x = 1:length(idx)
+        i = idx(x); j = jdx(x); 
+        if i ~= j && D(i) ~= D(j)
+            v(x) = (exp(D(i)) - exp(D(j))) / (D(i) - D(j));
+        else
+            v(x) = exp(D(i));
+        end
+    end
+
+    Df = sparse(idx, jdx, v);
+end
+
+function Df = ddTrFunc(Df, V, H)
+    Df = Df .* (V'*H*V);
+    Df = V * Df * V';
 end
