@@ -1,6 +1,6 @@
 function H = entropy(x)
-    %ENTROPY Summary of this function goes here
-    %   Detailed explanation goes here
-    H =  -sum(x .* log(x), 'all');
+    %ENTROPY Computes the Shannon entropy of a positive vector
+
+    H = -sum(x .* log(x), 'all');
 end
 

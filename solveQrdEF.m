@@ -1,16 +1,18 @@
-function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
-    %SOLVEQRD Main function to compute the quantum rate-distortion function.
+function [rate, distortion, info] = solveQrdEF(A, kappa, varargin)
+    %SOLVEQRDEF Main function to compute the quantum rate-distortion 
+    %function for entanglement fidelity distortion.
     %=====================================================================
     %   INPUTS
     %=====================================================================
     %   A:      Input density matrix (positive semidefinite, unit trace)
-    %   Delta:  Distortion observable
     %   kappa:  Non-negative fixed dual variable corresponding to 
     %           distortion constraint
     %
     %   opt:    (OPTIONAL) Structure containing solver options
     %   - opt.max_iter:     Maximum mirror descent iterations
     %   - opt.tol:          Tolerance at which mirror descent termiantes
+    %   - opt.get_gap:      Boolean for whether to compute lower bound to
+    %                       optimal value
     %   - opt.verbose:      0: Suppress all output; 1: Print outer iter.
     %                       progress; 2: Print inner and outer iter. 
     %                       progress
@@ -35,45 +37,46 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
     %   info:   Structure containing additional information about the solve
     %   - info.time:        Total time elapsed (s)
     %   - info.iter:        Total mirror descent (i.e., outer) iterations
-    %   - info.obj:         Solution objective value
+    %   - info.obj_ub:      Upper bound on optimal value
+    %   - info.obj_lb:      Lower bound on optimal value
+    %   - info.gap:         Upper bound on optimality gap
     %   - info.primal:      Solution primal variable
     %   - info.dub_dual:    Final solution dual variable to subproblem
     %=====================================================================
     %   EXAMPLE USAGE
     %=====================================================================
     %   % Define input density matrix and dual variable with default
-    %   options and intialization, and entanglement fidelity distortion
+    %   options and intialization
     %   A = [0.2 0; 0 0.8]; kappa = 1.0; opt = []; x0 = [];
-    %   AR = Purify(A); Delta = eye(4) - AR;
     %
-    %   [rate, distortion]          = SOLVEQRD(A, Delta, kappa);
-    %   [rate, distortion, info]    = SOLVEQRD(A, Delta, kappa);
-    %   [rate, distortion, info]    = SOLVEQRD(A, Delta, kappa, opt);
-    %   [rate, distortion, info]    = SOLVEQRD(A, Delta, kappa, opt, x0);
+    %   [rate, distortion]          = SOLVEQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt);
+    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt, x0);
 
 
     % Validate input arguments
     validateInputs(A, kappa);
-    [opt, x0] = defaultOptionalInputs(A, varargin);
+    [opt, x0] = defaultOptionalInputs(eig(A), varargin);
     validateOptionalInputs(opt, x0);
 
     N = length(A);
-    M = length(Delta) / N;
     printHeading(N, kappa, opt.verbose)
     
     % Pre-process input state and compute purification
-    R = eig(A, 'matrix');
-    entrA = entropy(diag(R));
+    A = eig(A);
+    [AR, ~, AR_vec] = Purify(A);
+    entrA = entropy(A);
 
     % Initialize primal and dual variables
-    BR_feas = x0.primal;
+    BR_feas = x0.primal; BR_D_feas = sparseEig(BR_feas);
     BR = x0.primal;
     V = x0.dual;
 
     % Compute rate-distortion pair and objective
-    rate = entrA + entropyQuantum(PartialTrace(BR_feas, 2, [M, N])) ...
-        - entropyQuantum(BR_feas);
-    distortion = trace(BR_feas * Delta);
+    B_feas = sparsePartialTrace(BR_feas, 2);
+    rate = entrA + entropy(B_feas) - entropy(BR_D_feas);
+    distortion = 1 - AR_vec' * BR_feas * AR_vec;
     obj_prev = rate + kappa*distortion;
 
     if opt.verbose
@@ -88,12 +91,12 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
     for k = 1:opt.max_iter
 
         % Perform mirror descent iteration
-        [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt);
+        [BR_feas, BR_D_feas, BR, V] = solveQrdEFSub(BR, V, AR, kappa, opt);
     
         % Compute objective value
-        rate = entrA + entropyQuantum(PartialTrace(BR_feas, 2, [M, N])) ...
-            - entropyQuantum(BR_feas);
-        distortion = trace(BR_feas * Delta);
+        B_feas = sparsePartialTrace(BR_feas, 2);
+        rate = entrA + entropy(B_feas) - entropy(BR_D_feas);
+        distortion = 1 - AR_vec' * BR_feas * AR_vec;
         obj = rate + kappa*distortion;
 
         % Update subproblem tolerance
@@ -115,17 +118,46 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
         
     end
 
+    % Lower bound
+    if opt.get_gap
+        if opt.verbose
+            fprintf("\nComputing lower bound...\n\n")
+        end
+
+        % Solve to machine precision using Newton's method
+        opt.sub.tol = eps;
+        opt.sub.alg = 'newton'; opt.sub.t0 = 1;
+        if opt.verbose; opt.verbose = 1; end
+        B = sparsePartialTrace(BR, 2);
+        [~, ~, BR, V] = solveQrdEFSub(BR, V, AR, kappa, opt);
+
+        % Frank-Wolfe lower bound
+        grad = kron((log(B) - log(sparsePartialTrace(BR, 2))), ones(N, 1));
+        grad = grad - kron(ones(N, 1), diag(V));
+        lb = entrA + kappa;
+        for i = 1:N
+            lb = lb + min(grad(i:N:end)) * A(i);
+        end
+    else
+        lb = [];
+    end
+
     % Populate info structure
     info.time = toc(timer);
     info.iter = k;
-    info.obj = obj;
+    info.obj_ub = obj;
+    info.obj_lb = lb;
+    if ~opt.get_gap; info.gap = []; else; info.gap = obj - lb; end
     info.primal = BR_feas;
     info.sub_dual = V;
 
     if opt.verbose
         fprintf("Solved in %.3f seconds with rate-distortion: \n\n", info.time)
         fprintf("\tRate:       %.4f (nats)\n", rate)
-        fprintf("\tDistortion: %.4f\n\n", distortion)
+        fprintf("\tDistortion: %.4f\n", distortion)
+        if opt.get_gap
+            fprintf("\nand solved to within optimality gap of %.1e.\n\n", info.gap)
+        end
     end
 
 end
@@ -155,6 +187,7 @@ function [opt, x0] = defaultOptionalInputs(A, argin)
 
     if ~isfield(opt, 'max_iter');   opt.max_iter    = 1000;     end
     if ~isfield(opt, 'tol');        opt.tol         = 1e-15;    end
+    if ~isfield(opt, 'get_gap');    opt.get_gap     = true;     end
     if ~isfield(opt, 'verbose');    opt.verbose     = 1;        end
 
     if ~isfield(opt, 'sub');        opt.sub         = [];       end
@@ -164,9 +197,8 @@ function [opt, x0] = defaultOptionalInputs(A, argin)
     if ~isfield(opt.sub, 'alpha');  opt.sub.alpha   = 0.1;      end
     if ~isfield(opt.sub, 'beta');   opt.sub.beta    = 0.1;      end
 
-    R = eig(A, 'matrix');
-    if ~isfield(x0, 'primal'); x0.primal = kron(A, R); end
-    if ~isfield(x0, 'dual'); x0.dual = -logm(R); end
+    if ~isfield(x0, 'primal'); x0.primal = sparse(1:N^2, 1:N^2, kron(A, A)); end
+    if ~isfield(x0, 'dual'); x0.dual = -sparse(1:N, 1:N, log(A)); end
 
 end
 
@@ -193,6 +225,9 @@ function validateOptionalInputs(opt, x0)
     end
     if opt.sub.tol < 0
         error('Option sub_tol must be nonnegative'); 
+    end
+    if ~islogical(opt.get_gap)
+        error('Option get_gap must be a boolean'); 
     end
     if ~ismember(opt.verbose, [0, 1, 2])
         error('Option verbose is invalid (must be 0, 1, or 2)'); 

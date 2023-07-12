@@ -1,29 +1,27 @@
-function [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt)
-    %SOLE_QRD_DUAL Solves the mirror descent subproblem for the quantum
-    %rate-distortion problem with entanglement fidelity distortion.
+function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
+    %SOLVEQRDSUB Solves the mirror descent subproblem for the quantum
+    %rate-distortion problem.
 
-    N = sqrt(length(BR));
-    R = sparsePartialTrace(AR, 1);
+    N = length(R);
+    M = length(BR) / N;
     I = speye(N);
 
     % Compute primal iterate
-    X_prev = kron(spdiag(log(sparsePartialTrace(BR, 2))), I);
-    X = X_prev - kron(I, V) + kappa*AR;
-    [BR_U, D] = sparseEig(X);
-    BR_D = exp(D);
-    BR = BR_U * spdiag(BR_D) * BR_U';
+    X_prev = kron(logm(PartialTrace(BR, 2, [M, N])), I);
+    X = X_prev - kron(I, V) - kappa*Delta;
+    [BR_U, D] = eig(X);
+    BR_D = spdiag(exp(diag(D)));
+    BR = BR_U * BR_D * BR_U';
 
     % Compute feasible primal iterate
     BR_feas = proj(BR, R);
-    [BR_U_feas, BR_D_feas] = sparseEig(BR_feas);
 
     % Function evaluation
-    obj = -trace(BR) - sum(R .* diag(V));
-    grad = sparsePartialTrace(BR, 1) - R;
+    obj = -trace(BR) - trace(R * V);
+    grad = PartialTrace(BR, 1, [M, N]) - R;
 
     % Optimality gap for inexact stopping criterion
-    gap = sparseQRE(BR_D_feas, BR_U_feas, BR_D, BR_U) ...
-        - trace(BR_feas) + trace(BR);
+    gap = relativeEntropyQuantum(BR_feas, BR) - trace(BR_feas) + trace(BR);
     
     if opt.verbose == 2
         fprintf("|  %d  \t  %.1e \n", 0, gap)
@@ -37,7 +35,8 @@ function [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt)
             p = grad;
         elseif strcmp(opt.sub.alg, 'newton')
             Hess = getHessian(D, BR_U);
-            p = -Hess \ grad;
+            p = -Hess \ grad(:);
+            p = reshape(p, [N, N]);
         else
             error(['Option sub.alg is invalid ' ...
                 '(must be ''gradient'' or ''newton'')'])
@@ -47,19 +46,19 @@ function [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt)
 
         while true
             % Update dual variable
-            V_new = V + t*spdiag(p);
+            V_new = V + t*p;
     
             % Compute primal iterate
-            X = X_prev - kron(I, V_new) + kappa*AR;
-            [BR_U, D] = sparseEig(X);
-            BR_D = exp(D);
-            BR = BR_U * spdiag(BR_D) * BR_U';
+            X = X_prev - kron(I, V_new) - kappa*Delta;
+            [BR_U, D] = eig(X);
+            BR_D = spdiag(exp(diag(D)));
+            BR = BR_U * BR_D * BR_U';
 
             % Function evaluation
-            obj_new = -trace(BR) - sum(R .* diag(V_new));
+            obj_new = -trace(BR) - trace(R * V_new);
 
             % Backtracking line search
-            if -obj_new <= -obj - opt.sub.alpha*t*(grad' * p)
+            if -obj_new <= -obj - opt.sub.alpha*t*trace(grad * p)
                 break
             end
             t = t * opt.sub.beta;
@@ -70,17 +69,15 @@ function [BR_feas, BR_D_feas, BR, V] = solveQrdSub(BR, V, AR, kappa, opt)
             break
         end
 
-        grad = sparsePartialTrace(BR, 1) - R;
+        grad = PartialTrace(BR, 1, [M, N]) - R;
         obj = obj_new;
         V = V_new;
 
         % Compute feasible primal iterate
         BR_feas = proj(BR, R);
-        [BR_U_feas, BR_D_feas] = sparseEig(BR_feas);
         
         % Optimality gap for inexact stopping criterion
-        gap = sparseQRE(BR_D_feas, BR_U_feas, BR_D, BR_U) ...
-            - trace(BR_feas) + trace(BR);
+        gap = relativeEntropyQuantum(BR_feas, BR) - trace(BR_feas) + trace(BR);
     
         if opt.verbose == 2
             fprintf("                        |                 |  %d  \t  %.1e \n", ...
@@ -97,8 +94,8 @@ end
 function fixed_rho = proj(rho, R)
     N = length(R);
     I = speye(N);
-    fix = (R ./ sparsePartialTrace(rho, 1)).^0.5;
-    fix = spdiag(fix);
+    fix = (R * PartialTrace(rho, 1)^-1).^0.5;
+    fix = real(fix);
 
     fixed_rho = kron(I, fix) * rho * kron(I, fix');
 end
@@ -106,39 +103,37 @@ end
 function J = getHessian(D, U)
     N = sqrt(length(D));
 
-    J = zeros(N, N);
+    J = zeros(N^2, N^2);
     Df = getFddMatrix(D);
 
     for i = 1:N
-        H = sparse(i:N:N^2, i:N:N^2, -1, N^2, N^2);
-        J_temp = ddTrFunc(Df, U, H);
-        J(i, :) = sparsePartialTrace(J_temp, 1, N);
-    end
+        for j = 1:N
+            if i > j
+                temp = reshape(J((j - 1)*N + i, :), [N, N]);
+                temp = temp';
+                J((i - 1)*N + j, :) = temp(:);
+            else
+                H = sparse(i, j, 1, N, N);
+                dFdH = PartialTrace(ddTrFunc(Df, U, -kron(eye(N), H)), 1, N);        
+                J((i - 1)*N + j, :) = dFdH(:);
+            end
+        end
+    end        
 end
 
 function Df = getFddMatrix(D)
+    N = length(D);
+    Df = zeros(N, N);
 
-    N = sqrt(length(D));
-
-    blk_idx = 1:N+1:N^2;
-    dgl_idx = 1:N^2; dgl_idx(blk_idx) = [];
-
-    temp_idx = repmat(blk_idx, N, 1);
-    idx = [reshape(temp_idx,  [N^2, 1]); dgl_idx'];
-    jdx = [reshape(temp_idx', [N^2, 1]); dgl_idx'];
-
-    v = zeros(length(idx), 1);
-
-    for x = 1:length(idx)
-        i = idx(x); j = jdx(x); 
-        if i ~= j && D(i) ~= D(j)
-            v(x) = (exp(D(i)) - exp(D(j))) / (D(i) - D(j));
-        else
-            v(x) = exp(D(i));
+    for i = 1:N
+        for j = 1:N
+            if i == j || D(i, i) == D(j, j)
+                Df(i, j) = exp(D(i, j));
+            else
+                Df(i, j) = (exp(D(i, i)) - exp(D(j, j))) / (D(i, i) - D(j, j));
+            end
         end
     end
-
-    Df = sparse(idx, jdx, v);
 end
 
 function Df = ddTrFunc(Df, V, H)

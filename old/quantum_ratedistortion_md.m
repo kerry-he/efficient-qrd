@@ -4,7 +4,7 @@ addpath(genpath('quantinf'))
 addpath(genpath('cvxquad-master'))
 
 rng(1)
-N = 128; % Density matrix size
+N = 16; % Density matrix size
 
 A = RandomDensityMatrix(N, 1);
 % [~, A] = eig(A);
@@ -16,7 +16,7 @@ R = PartialTrace(AR, 1, N);
 %% Experiments
 K = 100;
 D = 0.5;
-lambda = 7;
+lambda = 5;
 
 % Change of variables
 RHO_QR = kron(A, R);
@@ -144,14 +144,14 @@ function [RHO_QR, V, RHO_inf] = trace_preserve_V(RHO_QR, V, AR, lambda, EPS)
     while gap >= EPS
 
         % Compute Newton step
-%         J = get_jacobian(D, U);
-%         p = reshape(J \ F(:), [N, N]);
+        J = get_jacobian(D, U);
+        p = reshape(J \ F(:), [N, N]);
 
-        t = 1000;
+        t = 1;
         while true
             % Update with Newton step
-            step = F;
-%             step = -p;
+%             step = F;
+            step = -p;
             V_new = V + t*step;
     
             % Cheap diagonalisation of X and V
