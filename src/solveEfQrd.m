@@ -250,7 +250,7 @@ function validateOptionalInputs(opt, x0)
 
     % Validate x0
     if size(x0.primal, 1) ~= size(x0.primal, 2) ...
-            || ~all(eig(x0.primal) >= 0, 'all')
+            || ~all(sparseEig(x0.primal) >= 0, 'all')
         error('Input x0.primal must be a square PSD matrix'); 
     end
     if size(x0.dual, 1) ~= size(x0.dual, 2) ...
