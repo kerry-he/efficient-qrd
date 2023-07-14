@@ -4,11 +4,12 @@ function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
 
     N = length(R);
     M = length(BR) / N;
-    I = speye(N);
+    I_B = speye(M);
+    I_R = speye(N);
 
     % Compute primal iterate
-    X_prev = kron(logm(PartialTrace(BR, 2, [M, N])), I);
-    X = X_prev - kron(I, V) - kappa*Delta;
+    X_prev = kron(logm(partialTrace(BR, 2, [M, N])), I_R);
+    X = X_prev - kron(I_B, V) - kappa*Delta;
     [BR_U, D] = eig(X);
     BR_D = spdiag(exp(diag(D)));
     BR = BR_U * BR_D * BR_U';
@@ -18,7 +19,7 @@ function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
 
     % Function evaluation
     obj = -trace(BR) - trace(R * V);
-    grad = PartialTrace(BR, 1, [M, N]) - R;
+    grad = partialTrace(BR, 1, [M, N]) - R;
 
     % Optimality gap for inexact stopping criterion
     gap = relativeEntropyQuantum(BR_feas, BR) - trace(BR_feas) + trace(BR);
@@ -49,7 +50,7 @@ function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
             V_new = V + t*p;
     
             % Compute primal iterate
-            X = X_prev - kron(I, V_new) - kappa*Delta;
+            X = X_prev - kron(I_B, V_new) - kappa*Delta;
             [BR_U, D] = eig(X);
             BR_D = spdiag(exp(diag(D)));
             BR = BR_U * BR_D * BR_U';
@@ -69,7 +70,7 @@ function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
             break
         end
 
-        grad = PartialTrace(BR, 1, [M, N]) - R;
+        grad = partialTrace(BR, 1, [M, N]) - R;
         obj = obj_new;
         V = V_new;
 
@@ -91,13 +92,14 @@ end
 
 %% Auxiliary functions
 
-function fixed_rho = proj(rho, R)
+function BR_feas = proj(BR, R)
     N = length(R);
-    I = speye(N);
-    fix = (R * PartialTrace(rho, 1)^-1).^0.5;
-    fix = real(fix);
+    M = length(BR) / N;
 
-    fixed_rho = kron(I, fix) * rho * kron(I, fix');
+    I_B = speye(M);
+    proj_op = (R * partialTrace(BR, 1, [M, N])^-1)^0.5;
+
+    BR_feas = kron(I_B, proj_op) * BR * kron(I_B, proj_op');
 end
 
 function J = getHessian(D, U)
@@ -114,7 +116,7 @@ function J = getHessian(D, U)
                 J((i - 1)*N + j, :) = temp(:);
             else
                 H = sparse(i, j, 1, N, N);
-                dFdH = PartialTrace(ddTrFunc(Df, U, -kron(eye(N), H)), 1, N);        
+                dFdH = partialTrace(ddTrFunc(Df, U, -kron(eye(N), H)), 1, N);        
                 J((i - 1)*N + j, :) = dFdH(:);
             end
         end

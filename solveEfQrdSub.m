@@ -1,4 +1,4 @@
-function [BR_feas, BR_D_feas, BR, V] = solveQrdEFSub(BR, V, AR, kappa, opt)
+function [BR_feas, BR_D_feas, BR, V] = solveEfQrdSub(BR, V, AR, kappa, opt)
     %SOLVEQRDEFSUB Solves the mirror descent subproblem for the quantum
     %rate-distortion problem with entanglement fidelity distortion.
 
@@ -94,13 +94,13 @@ end
 
 %% Auxiliary functions
 
-function fixed_rho = proj(rho, R)
+function BR_feas = proj(rho, R)
     N = length(R);
     I = speye(N);
-    fix = (R ./ sparsePartialTrace(rho, 1)).^0.5;
-    fix = spdiag(fix);
+    proj_op = (R ./ sparsePartialTrace(rho, 1)).^0.5;
+    proj_op = spdiag(proj_op);
 
-    fixed_rho = kron(I, fix) * rho * kron(I, fix');
+    BR_feas = kron(I, proj_op) * rho * kron(I, proj_op');
 end
 
 function J = getHessian(D, U)

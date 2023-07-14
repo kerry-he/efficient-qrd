@@ -44,7 +44,7 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
     %   % Define input density matrix and dual variable with default
     %   options and intialization, and entanglement fidelity distortion
     %   A = [0.2 0; 0 0.8]; kappa = 1.0; opt = []; x0 = [];
-    %   AR = Purify(A); Delta = eye(4) - AR;
+    %   AR = purify(A); Delta = eye(4) - AR;
     %
     %   [rate, distortion]          = SOLVEQRD(A, Delta, kappa);
     %   [rate, distortion, info]    = SOLVEQRD(A, Delta, kappa);
@@ -54,12 +54,12 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
 
     % Validate input arguments
     validateInputs(A, kappa);
-    [opt, x0] = defaultOptionalInputs(A, varargin);
+    [opt, x0] = defaultOptionalInputs(A, Delta, varargin);
     validateOptionalInputs(opt, x0);
 
     N = length(A);
     M = length(Delta) / N;
-    printHeading(N, kappa, opt.verbose)
+    printHeading(N, M, kappa, opt.verbose)
     
     % Pre-process input state and compute purification
     R = eig(A, 'matrix');
@@ -71,7 +71,7 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
     V = x0.dual;
 
     % Compute rate-distortion pair and objective
-    rate = entrA + entropyQuantum(PartialTrace(BR_feas, 2, [M, N])) ...
+    rate = entrA + entropyQuantum(partialTrace(BR_feas, 2, [M, N])) ...
         - entropyQuantum(BR_feas);
     distortion = trace(BR_feas * Delta);
     obj_prev = rate + kappa*distortion;
@@ -91,7 +91,7 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
         [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt);
     
         % Compute objective value
-        rate = entrA + entropyQuantum(PartialTrace(BR_feas, 2, [M, N])) ...
+        rate = entrA + entropyQuantum(partialTrace(BR_feas, 2, [M, N])) ...
             - entropyQuantum(BR_feas);
         distortion = trace(BR_feas * Delta);
         obj = rate + kappa*distortion;
@@ -132,10 +132,11 @@ end
 
 %% Auxiliary functions
 
-function [opt, x0] = defaultOptionalInputs(A, argin)
+function [opt, x0] = defaultOptionalInputs(A, Delta, argin)
 
     nargin = length(argin);
     N = length(A);
+    M = length(Delta) / N;
 
     if nargin >= 0 && nargin <= 2
         if nargin == 2
@@ -165,8 +166,8 @@ function [opt, x0] = defaultOptionalInputs(A, argin)
     if ~isfield(opt.sub, 'beta');   opt.sub.beta    = 0.1;      end
 
     R = eig(A, 'matrix');
-    if ~isfield(x0, 'primal'); x0.primal = kron(A, R); end
-    if ~isfield(x0, 'dual'); x0.dual = -logm(R); end
+    if ~isfield(x0, 'primal');      x0.primal = kron(eye(M)/M, R);  end
+    if ~isfield(x0, 'dual');        x0.dual = -logm(R);             end
 
 end
 
@@ -225,10 +226,10 @@ function validateOptionalInputs(opt, x0)
 
 end
 
-function printHeading(N, kappa, verbose)
+function printHeading(N, M, kappa, verbose)
     if verbose
-        fprintf("Computing quantum rate-distortion with entanglement fidelity \n" + ...
-            "distortion for N = %d input state and \x03BA = %.1f dist. multiplier\n\n", N, kappa);
+        fprintf("Computing quantum rate-distortion for N = %d input state,\n" + ...
+            "M = %d output state, and \x03BA = %.1f distortion multiplier\n\n", N, M, kappa);
     end
 
     if verbose == 2

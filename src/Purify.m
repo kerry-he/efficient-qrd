@@ -1,16 +1,17 @@
-function [AR, R, AR_vec] = Purify(A)
-    % Purify a diagonal state A
+function [AR, AR_vec] = purify(A)
+    % Purify a quantum density matrix A
 
     N = length(A);
 
     if numel(A) == N
         
+        % If A is a vector, assume A = diag(A)
         AR_vec = sparse(1:N+1:N^2, ones(N, 1), sqrt(A));
         AR = AR_vec * AR_vec';
-        R = A;
 
     else
 
+        % Otherwise compute purification normally
         [U, D] = eig(A);
         AR_vec = zeros(N^2, 1);
         for i = 1:N
@@ -18,7 +19,6 @@ function [AR, R, AR_vec] = Purify(A)
             AR_vec = AR_vec + sqrt(D(i, i)) * kron(U(:, i), r_vec);
         end
         AR = AR_vec * AR_vec';
-        R = diag(D);
         
     end
 

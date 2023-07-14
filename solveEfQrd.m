@@ -1,5 +1,5 @@
-function [rate, distortion, info] = solveQrdEF(A, kappa, varargin)
-    %SOLVEQRDEF Main function to compute the quantum rate-distortion 
+function [rate, distortion, info] = solveEfQrd(A, kappa, varargin)
+    %SOLVEEFQRD Main function to compute the quantum rate-distortion 
     %function for entanglement fidelity distortion.
     %=====================================================================
     %   INPUTS
@@ -65,7 +65,7 @@ function [rate, distortion, info] = solveQrdEF(A, kappa, varargin)
     
     % Pre-process input state and compute purification
     A = eig(A);
-    [AR, ~, AR_vec] = Purify(A);
+    [AR, AR_vec] = purify(A);
     entrA = entropy(A);
 
     % Initialize primal and dual variables
@@ -91,7 +91,7 @@ function [rate, distortion, info] = solveQrdEF(A, kappa, varargin)
     for k = 1:opt.max_iter
 
         % Perform mirror descent iteration
-        [BR_feas, BR_D_feas, BR, V] = solveQrdEFSub(BR, V, AR, kappa, opt);
+        [BR_feas, BR_D_feas, BR, V] = solveEfQrdSub(BR, V, AR, kappa, opt);
     
         % Compute objective value
         B_feas = sparsePartialTrace(BR_feas, 2);
@@ -129,7 +129,7 @@ function [rate, distortion, info] = solveQrdEF(A, kappa, varargin)
         opt.sub.alg = 'newton'; opt.sub.t0 = 1;
         if opt.verbose; opt.verbose = 1; end
         B = sparsePartialTrace(BR, 2);
-        [~, ~, BR, V] = solveQrdEFSub(BR, V, AR, kappa, opt);
+        [~, ~, BR, V] = solveEfQrdSub(BR, V, AR, kappa, opt);
 
         % Frank-Wolfe lower bound
         grad = kron((log(B) - log(sparsePartialTrace(BR, 2))), ones(N, 1));
