@@ -49,10 +49,10 @@ function [rate, distortion, info] = solveEfQrd(A, kappa, varargin)
     %   options and intialization
     %   A = [0.2 0; 0 0.8]; kappa = 1.0; opt = []; x0 = [];
     %
-    %   [rate, distortion]          = SOLVEQRD(A, kappa);
-    %   [rate, distortion, info]    = SOLVEQRD(A, kappa);
-    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt);
-    %   [rate, distortion, info]    = SOLVEQRD(A, kappa, opt, x0);
+    %   [rate, distortion]          = SOLVEEFQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEEFQRD(A, kappa);
+    %   [rate, distortion, info]    = SOLVEEFQRD(A, kappa, opt);
+    %   [rate, distortion, info]    = SOLVEEFQRD(A, kappa, opt, x0);
 
 
     % Validate input arguments
