@@ -2,7 +2,7 @@
 
 ## About
 
-A MATLAB implementation of an inexact mirror descent to compute the quantum rate-distortion function for an input quantum density matrix $\rho$ with purification $|\psi\rangle$ and positive distortion observable $\Delta$
+A MATLAB implementation of an inexact mirror descent to compute the quantum rate-distortion function for an input quantum density matrix $\rho$ with purification $|\psi\rangle$, positive distortion observable $\Delta$, and distortion multiplier $\kappa\geq0$
 
 $$\min_{\mathcal{N}} \quad I(\rho, \mathcal{N}) + \kappa \langle \Delta , (\mathcal{N} \otimes \text{Id.})(|\psi\rangle\langle\psi|) \rangle, \qquad \text{subj. to} \quad \mathcal{N}\in\mathsf{CPTP}$$
 
@@ -18,9 +18,9 @@ The code is completely standadlone, and should run without any additional packag
 
 An example of how to use these functions is as follows:
 
-    A = [0.2 0; 0 0.8]; 				% Define input state
-    kappa = 1.0;					% Define distortion mutliplier
-    [rate, distortion, info] = solve(A, kappa); 	% Solve for rate-distortion
+	A = [0.2 0; 0 0.8]; 				% Define input state
+	kappa = 1.0;					% Define distortion mutliplier
+	[rate, distortion, info] = solve(A, kappa); 	% Solve for rate-distortion
 	
 Other examples of how to use the function can be found in `examples`. These include
 
@@ -31,4 +31,11 @@ Other examples of how to use the function can be found in `examples`. These incl
 
 ## Citation
 
-TODO
+This code is based on the work the paper here (TODO). If you find our work useful, please cite us using
+
+	@unpublished{he2023efficient,
+	  title={Efficient Computation of the Quantum Rate-Distortion Function},
+	  author={He, Kerry and Saunderson, James and Fawzi, Hamza},
+	  year={2023},
+	  note={unpublished}
+	}
