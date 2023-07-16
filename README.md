@@ -18,9 +18,9 @@ The code is completely standadlone, and should run without any additional packag
 
 An example of how to use these functions is as follows:
 
-	A = [0.2 0; 0 0.8]; 				% Define input state
-	kappa = 1.0;					% Define distortion mutliplier
-	[rate, distortion, info] = solve(A, kappa); 	% Solve for rate-distortion
+	A = [0.2 0; 0 0.8]; 					% Define input state
+	kappa = 1.0;						% Define distortion mutliplier
+	[rate, distortion, info] = solveEfQrd(A, kappa); 	% Solve for rate-distortion
 	
 Other examples of how to use the function can be found in `examples`. These include
 
