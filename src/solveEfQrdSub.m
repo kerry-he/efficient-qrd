@@ -38,9 +38,14 @@ function [BR_feas, BR_D_feas, BR, V] = solveEfQrdSub(BR, V, AR, kappa, opt)
         elseif strcmp(opt.sub.alg, 'newton')
             Hess = getHessian(D, BR_U);
             p = -Hess \ grad;
+        elseif strcmp(opt.sub.alg, 'cg')
+            Df = getFddMatrix(D);
+            hessProd = @(H) sparsePartialTrace(...
+                ddTrFunc(Df, BR_U, kron(I, spdiag(H))), 1);
+            [p, ~] = cgs(hessProd, grad);
         else
             error(['Option sub.alg is invalid ' ...
-                '(must be ''gradient'' or ''newton'')'])
+                '(must be ''gradient'', ''newton'', or ''cg'')'])
         end
 
         t = opt.sub.t0;

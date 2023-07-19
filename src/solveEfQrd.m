@@ -13,13 +13,15 @@ function [rate, distortion, info] = solveEfQrd(A, kappa, varargin)
     %   - opt.tol:          Tolerance at which mirror descent termiantes
     %   - opt.get_gap:      Boolean for whether to compute lower bound to
     %                       optimal value
-    %   - opt.verbose:      0: Suppress all output; 1: Print outer iter.
-    %                       progress; 2: Print inner and outer iter. 
+    %   - opt.verbose:      - 0: Suppress all output; 
+    %                       - 1: Print outer iter info;
+    %                       - 2: Print inner and outer iter info. 
     %                       progress
     %   - opt.sub:          Subproblem specific settings
     %       - opt.sub.tol:      Initial tolerance to solve to
-    %       - opt.sub.alg:      'gradient': Use gradient descent; 
-    %                           'newton': Use Newton's method
+    %       - opt.sub.alg:      - 'gradient': Use gradient descent; 
+    %                           - 'newton': Use Newton's method;
+    %                           - 'cg': Use Newton's w/ conjugate gradient
     %       - opt.sub.t0:       Initial step size to backtrack from
     %       - opt.sub.alpha:    Backtracking parameter
     %       - opt.sub.beta:     Backtracking parameter
@@ -234,9 +236,9 @@ function validateOptionalInputs(opt, x0)
     end
 
     % Validate opt.sub
-    if ~ismember(opt.sub.alg, ['gradient', 'newton'])
+    if ~ismember(opt.sub.alg, ['gradient', 'newton', 'cg'])
         error(['Option sub.alg is invalid ' ...
-            '(must be ''gradient'' or ''newton'')'])
+            '(must be ''gradient'', ''newton'', or ''cg'')'])
     end
     if opt.sub.t0 < 0
         error('Option sub.t0 must be nonnegative'); 

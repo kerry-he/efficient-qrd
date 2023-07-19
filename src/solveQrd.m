@@ -11,13 +11,14 @@ function [rate, distortion, info] = solveQrd(A, Delta, kappa, varargin)
     %   opt:    (OPTIONAL) Structure containing solver options
     %   - opt.max_iter:     Maximum mirror descent iterations
     %   - opt.tol:          Tolerance at which mirror descent termiantes
-    %   - opt.verbose:      0: Suppress all output; 1: Print outer iter.
-    %                       progress; 2: Print inner and outer iter. 
+    %   - opt.verbose:      - 0: Suppress all output; 
+    %                       - 1: Print outer iter info;
+    %                       - 2: Print inner and outer iter info. 
     %                       progress
     %   - opt.sub:          Subproblem specific settings
     %       - opt.sub.tol:      Initial tolerance to solve to
-    %       - opt.sub.alg:      'gradient': Use gradient descent; 
-    %                           'newton': Use Newton's method
+    %       - opt.sub.alg:      - 'gradient': Use gradient descent; 
+    %                           - 'newton': Use Newton's method
     %       - opt.sub.t0:       Initial step size to backtrack from
     %       - opt.sub.alpha:    Backtracking parameter
     %       - opt.sub.beta:     Backtracking parameter
@@ -200,9 +201,9 @@ function validateOptionalInputs(opt, x0)
     end
 
     % Validate opt.sub
-    if ~ismember(opt.sub.alg, ['gradient', 'newton'])
+    if ~ismember(opt.sub.alg, ['gradient', 'newton', 'cg'])
         error(['Option sub.alg is invalid ' ...
-            '(must be ''gradient'' or ''newton'')'])
+            '(must be ''gradient'', ''newton'', or ''cg'')'])
     end
     if opt.sub.t0 < 0
         error('Option sub.t0 must be nonnegative'); 

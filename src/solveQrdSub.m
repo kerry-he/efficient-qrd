@@ -38,9 +38,15 @@ function [BR_feas, BR, V] = solveQrdSub(BR, V, Delta, R, kappa, opt)
             Hess = getHessian(D, BR_U);
             p = -Hess \ grad(:);
             p = reshape(p, [N, N]);
+        elseif strcmp(opt.sub.alg, 'cg')
+            Df = getFddMatrix(D);
+            hessProd = @(H) reshape(partialTrace(...
+                ddTrFunc(Df, BR_U, kron(I_B, reshape(H, [N, N]))), 1, [M, N]), [N^2, 1]);
+            [p, ~] = cgs(hessProd, grad(:));       
+            p = reshape(p, [N, N]);
         else
             error(['Option sub.alg is invalid ' ...
-                '(must be ''gradient'' or ''newton'')'])
+                '(must be ''gradient'', ''newton'', or ''cg'')'])
         end
 
         t = opt.sub.t0;

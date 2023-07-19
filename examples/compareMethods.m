@@ -20,8 +20,7 @@ opt.verbose = 0;
 lb = info.obj_lb;
 fprintf("Y     Newton      %.4f      %.1e\n", info.time, info.gap)
 
-
-%% Solve with symmetry reductionand gradient descent
+%% Solve with symmetry reduction and gradient descent
 opt = [];
 opt.verbose = 0;
 opt.tol = 1e-8;
@@ -30,6 +29,14 @@ opt.sub.t0 = 1000;
 
 [~, ~, info] = solveEfQrd(A, kappa, opt);
 fprintf("Y     Gradient    %.4f      %.1e\n", info.time, info.obj_ub - lb)
+
+%% Solve with symmetry reduction and Newton's w/ conjugate gradient
+opt = [];
+opt.verbose = 0;
+opt.sub.alg = 'cg';
+
+[~, ~, info] = solveEfQrd(A, kappa, opt);
+fprintf("Y     CG          %.4f      %.1e\n", info.time, info.obj_ub - lb)
 
 %% Solve without symmetry reduction and Newton's method
 opt = [];
@@ -46,6 +53,13 @@ opt.tol = 1e-8;
 opt.sub.alg = 'gradient';
 opt.sub.t0 = 1000;
 
-x0.primal = kron(A, eig(A, 'matrix'));
 [~, ~, info] = solveQrd(A, -AR, kappa, opt, x0);
 fprintf("N     Gradient    %.4f      %.1e\n", info.time, info.obj - lb + kappa)
+
+%% Solve without symmetry reduction and Newton's w/ conjugate gradient
+opt = [];
+opt.verbose = 0;
+opt.sub.alg = 'cg';
+
+[~, ~, info] = solveQrd(A, -AR, kappa, opt, x0);
+fprintf("N     CG          %.4f      %.1e\n", info.time, info.obj - lb + kappa)
