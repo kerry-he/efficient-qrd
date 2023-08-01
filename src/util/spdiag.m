@@ -1,6 +1,5 @@
 function X = spdiag(x)
-    %SPDIAG Summary of this function goes here
-    %   Detailed explanation goes here
+    %SPDIAG Creates sparse diagonal matrix with entries x
     N = length(x);
     X = sparse(1:N, 1:N, x);
 end
