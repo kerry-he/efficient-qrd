@@ -31,7 +31,7 @@ Other examples of how to use the function can be found in `examples`. These incl
 
 ## Citation
 
-This code is based on the work the paper here (TODO). If you find our work useful, please cite us using
+This code is based on the work the paper here: <https://arxiv.org/abs/2309.15919>. If you find our work useful, please cite us using
 
 	@article{he2023efficient,
 	  title={Efficient Computation of the Quantum Rate-Distortion Function},
