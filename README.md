@@ -33,9 +33,9 @@ Other examples of how to use the function can be found in `examples`. These incl
 
 This code is based on the work the paper here (TODO). If you find our work useful, please cite us using
 
-	@unpublished{he2023efficient,
+	@article{he2023efficient,
 	  title={Efficient Computation of the Quantum Rate-Distortion Function},
 	  author={He, Kerry and Saunderson, James and Fawzi, Hamza},
-	  year={2023},
-	  note={unpublished}
+	  journal={arXiv preprint arXiv:2309.15919},
+	  year={2023}
 	}
