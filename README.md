@@ -2,7 +2,7 @@
 
 ## About
 
-A MATLAB implementation of an inexact mirror descent to compute the quantum rate-distortion function for an input quantum density matrix $\rho$ with purification $|\psi\rangle$, positive distortion observable $\Delta$, and distortion multiplier $\kappa\geq0$
+A MATLAB implementation of an inexact mirror descent algorithm to compute the quantum rate-distortion function for an input quantum density matrix $\rho$ with purification $|\psi\rangle$, positive distortion observable $\Delta$, and distortion multiplier $\kappa\geq0$
 
 $$\min_{\mathcal{N}} \quad I(\rho, \mathcal{N}) + \kappa \langle \Delta , (\mathcal{N} \otimes \text{Id.})(|\psi\rangle\langle\psi|) \rangle, \qquad \text{subj. to} \quad \mathcal{N}\in\mathsf{CPTP}$$
 
