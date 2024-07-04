@@ -31,11 +31,15 @@ Other examples of how to use the function can be found in `examples`. These incl
 
 ## Citation
 
-This code is based on the work the paper here: <https://arxiv.org/abs/2309.15919>. If you find our work useful, please cite us using
+This code is based on the work the paper here: <https://quantum-journal.org/papers/q-2024-04-09-1314/>. If you find our work useful, please cite us using
 
-	@article{he2023efficient,
+	@article{he2024efficient,
 	  title={Efficient Computation of the Quantum Rate-Distortion Function},
 	  author={He, Kerry and Saunderson, James and Fawzi, Hamza},
-	  journal={arXiv preprint arXiv:2309.15919},
-	  year={2023}
+	  journal={Quantum},
+	  volume={8},
+	  pages={1314},
+	  year={2024},
+	  publisher={Verein zur F{\"o}rderung des Open Access Publizierens in den Quantenwissenschaften},
+	  doi = {10.22331/q-2024-04-09-1314},
 	}
